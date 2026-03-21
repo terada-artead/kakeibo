@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>かけいぼ</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a22;
+    --surface2: #22222e;
+    --border: #2e2e3e;
+    --accent: #7c6ef5;
+    --accent2: #c084fc;
+    --plus: #4ade80;
+    --minus: #f87171;
+    --text: #e8e8f0;
+    --text2: #8888aa;
+    --text3: #555570;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Zen Kaku Gothic New', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+
+  .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(26,26,34,0.95); backdrop-filter: blur(20px); border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+  .tab-btn { flex: 1; padding: 12px 0 10px; background: none; border: none; color: var(--text3); font-family: inherit; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: color .2s; }
+  .tab-btn.active { color: var(--accent2); }
+  .tab-btn svg { width: 22px; height: 22px; }
+
+  .page { display: none; padding: 0 0 90px; }
+  .page.active { display: block; }
+
+  .header { padding: 56px 20px 20px; background: linear-gradient(180deg, rgba(124,110,245,0.12) 0%, transparent 100%); }
+  .header-label { font-size: 11px; letter-spacing: .15em; color: var(--text3); text-transform: uppercase; margin-bottom: 6px; }
+  .header-title { font-size: 28px; font-weight: 900; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+  .balance-card { margin: 0 16px 20px; background: linear-gradient(135deg, #1e1b40 0%, #2a1a3e 100%); border-radius: var(--radius); padding: 28px 24px; border: 1px solid rgba(124,110,245,0.3); position: relative; overflow: hidden; }
+  .balance-card::before { content: ''; position: absolute; top: -40px; right: -40px; width: 140px; height: 140px; background: radial-gradient(circle, rgba(192,132,252,0.2) 0%, transparent 70%); pointer-events: none; }
+  .balance-label { font-size: 12px; color: var(--text2); letter-spacing: .08em; margin-bottom: 8px; }
+  .balance-amount { font-family: 'DM Mono', monospace; font-size: 42px; font-weight: 500; letter-spacing: -.02em; line-height: 1; }
+  .balance-amount.minus { color: var(--minus); }
+  .balance-amount.plus  { color: var(--plus); }
+  .balance-amount.zero  { color: var(--text); }
+  .balance-sub { margin-top: 16px; display: flex; gap: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.07); }
+  .balance-sub-item { flex: 1; }
+  .balance-sub-label { font-size: 11px; color: var(--text3); margin-bottom: 3px; }
+  .balance-sub-val { font-family: 'DM Mono', monospace; font-size: 16px; color: var(--text2); }
+
+  .summary-chips { display: flex; gap: 8px; padding: 0 16px 16px; overflow-x: auto; scrollbar-width: none; }
+  .summary-chips::-webkit-scrollbar { display: none; }
+  .chip { flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .chip span { color: var(--text); font-weight: 700; }
+
+  .add-btn-home { margin: 0 16px; width: calc(100% - 32px); background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: var(--radius-sm); padding: 16px; color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: opacity .2s, transform .1s; letter-spacing: .04em; }
+  .add-btn-home:active { opacity: .85; transform: scale(.98); }
+
+  .section-title { padding: 20px 16px 10px; font-size: 12px; letter-spacing: .12em; color: var(--text3); text-transform: uppercase; }
+
+  .record-list { padding: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+  .record-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; display: flex; align-items: center; gap: 12px; animation: fadeIn .25s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  .record-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .record-info { flex: 1; min-width: 0; }
+  .record-genre { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .record-meta { font-size: 11px; color: var(--text3); margin-top: 2px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .badge { background: rgba(124,110,245,0.15); color: var(--accent2); border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; }
+  .badge.refund  { background: rgba(74,222,128,0.1);    color: var(--plus); }
+  .badge.advance { background: rgba(251,191,36,0.12);   color: #fbbf24; }
+  .record-amount { font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 500; flex-shrink: 0; }
+  .record-amount.minus { color: var(--minus); }
+  .record-amount.plus  { color: var(--plus); }
+  .record-delete { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 16px; padding: 4px; flex-shrink: 0; transition: color .15s; }
+  .record-delete:active { color: var(--minus); }
+
+  .input-card { margin: 0 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  .field-label { font-size: 11px; letter-spacing: .1em; color: var(--text3); text-transform: uppercase; margin-bottom: 8px; }
+  .field-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px 16px; color: var(--text); font-family: inherit; font-size: 15px; outline: none; transition: border-color .2s; -webkit-appearance: none; }
+  .field-input:focus { border-color: var(--accent); }
+  .field-input.amount { font-family: 'DM Mono', monospace; font-size: 22px; }
+  select.field-input { cursor: pointer; }
+  select.field-input option { background: #1a1a22; }
+
+  .type-toggle { display: flex; background: var(--surface2); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+  .type-btn { flex: 1; padding: 11px; border: none; background: none; color: var(--text3); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s; letter-spacing: .04em; }
+  .type-btn.active-minus { background: rgba(248,113,113,0.15); color: var(--minus); }
+  .type-btn.active-plus  { background: rgba(74,222,128,0.15);  color: var(--plus); }
+
+  .check-row { display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: var(--surface2); border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; transition: border-color .2s; }
+  .check-row.checked { border-color: var(--accent); }
+  .check-box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--border); background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .2s; }
+  .check-row.checked .check-box { background: var(--accent); border-color: var(--accent); }
+  .check-box svg { display: none; }
+  .check-row.checked .check-box svg { display: block; }
+  .check-label { font-size: 14px; flex: 1; }
+  .check-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+  /* 自分分入力欄 */
+  .advance-detail { margin-top: 8px; background: rgba(251,191,36,0.05); border: 1px solid rgba(251,191,36,0.2); border-radius: var(--radius-sm); padding: 14px 16px; display: none; }
+  .advance-detail.visible { display: block; }
+  .advance-detail-label { font-size: 11px; letter-spacing: .08em; color: #fbbf24; margin-bottom: 8px; }
+  .advance-self-input { width: 100%; background: var(--surface); border: 1px solid rgba(251,191,36,0.3); border-radius: var(--radius-sm); padding: 11px 14px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 20px; outline: none; transition: border-color .2s; -webkit-appearance: none; }
+  .advance-self-input:focus { border-color: #fbbf24; }
+  .advance-self-hint { font-size: 11px; color: var(--text3); margin-top: 8px; line-height: 1.7; }
+
+  .submit-btn { margin: 20px 16px 0; width: calc(100% - 32px); background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: var(--radius-sm); padding: 16px; color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; letter-spacing: .04em; transition: opacity .2s, transform .1s; }
+  .submit-btn:active { opacity: .85; transform: scale(.98); }
+
+  /* Stats */
+  .stats-tabs { display: flex; gap: 8px; padding: 0 16px 14px; }
+  .stats-tab-btn { flex: 1; padding: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text3); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .2s; letter-spacing: .04em; }
+  .stats-tab-btn.active { background: rgba(124,110,245,0.15); border-color: var(--accent); color: var(--accent2); }
+  .stats-section { padding: 0 16px 16px; }
+  .stats-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
+  .stats-card-title { padding: 14px 16px; font-size: 12px; letter-spacing: .1em; color: var(--text3); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .stat-row { display: flex; align-items: center; padding: 12px 16px; gap: 12px; border-bottom: 1px solid var(--border); }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+  .stat-name { flex: 1; font-size: 14px; }
+  .stat-bar-wrap { width: 80px; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .stat-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; transition: width .4s ease; }
+  .stat-bar.income { background: linear-gradient(90deg, #4ade80, #22d3ee); }
+  .stat-amount { font-family: 'DM Mono', monospace; font-size: 14px; color: var(--text2); min-width: 80px; text-align: right; }
+
+  .empty { padding: 48px 16px; text-align: center; color: var(--text3); font-size: 14px; line-height: 2; }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+  .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 10px 20px; font-size: 13px; color: var(--text); opacity: 0; transition: all .3s; pointer-events: none; white-space: nowrap; z-index: 200; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Settings */
+  .settings-section { padding: 0 16px 16px; }
+  .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; }
+  .settings-card-title { padding: 14px 16px; font-size: 12px; letter-spacing: .1em; color: var(--text3); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .settings-item { display: flex; align-items: center; padding: 13px 16px; border-bottom: 1px solid var(--border); gap: 10px; }
+  .settings-item:last-child { border-bottom: none; }
+  .settings-item-icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+  .settings-item-name { flex: 1; font-size: 14px; }
+  .settings-item-del { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 18px; padding: 4px 6px; transition: color .15s; flex-shrink: 0; border-radius: 6px; }
+  .settings-item-del:active { color: var(--minus); background: rgba(248,113,113,0.1); }
+  .add-option-row { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  .add-option-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; transition: border-color .2s; }
+  .add-option-input:focus { border-color: var(--accent); }
+  .add-option-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: var(--radius-sm); padding: 10px 16px; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: opacity .2s; }
+  .add-option-btn:active { opacity: .8; }
+
+  /* Data deletion */
+  .delete-month-row { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .delete-month-label { font-size: 14px; margin-bottom: 10px; }
+  .delete-month-controls { display: flex; gap: 8px; }
+  .delete-month-select { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; -webkit-appearance: none; cursor: pointer; }
+  .delete-month-select option { background: #1a1a22; }
+  .delete-month-btn { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: var(--radius-sm); padding: 10px 16px; color: var(--minus); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: background .15s; }
+  .delete-month-btn:active { background: rgba(248,113,113,0.2); }
+  .delete-all-row { padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+  .delete-all-label { font-size: 14px; }
+  .delete-all-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .delete-all-btn { margin-left: auto; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: var(--radius-sm); padding: 10px 16px; color: var(--minus); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: background .15s; }
+  .delete-all-btn:active { background: rgba(248,113,113,0.2); }
+
+  .month-selector { display: flex; align-items: center; gap: 12px; padding: 0 16px 16px; }
+  .month-label { flex: 1; font-size: 16px; font-weight: 700; text-align: center; }
+  .month-nav { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text2); font-size: 16px; transition: border-color .2s; }
+  .month-nav:active { border-color: var(--accent); }
+
+  /* Record item tap hint */
+  .record-item { cursor: pointer; transition: background .15s, border-color .15s; }
+  .record-item:active { background: var(--surface2); border-color: var(--accent); }
+
+  /* Edit Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 300;
+    display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal-sheet {
+    width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+    background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+    padding: 0 0 env(safe-area-inset-bottom);
+    transform: translateY(40px); transition: transform .25s;
+  }
+  .modal-overlay.open .modal-sheet { transform: translateY(0); }
+  .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 12px auto 0; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: color .15s; }
+  .modal-close:active { color: var(--text); }
+  .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-field-label { font-size: 11px; letter-spacing: .1em; color: var(--text3); text-transform: uppercase; margin-bottom: 6px; }
+  .modal-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; color: var(--text); font-family: inherit; font-size: 15px; outline: none; transition: border-color .2s; -webkit-appearance: none; }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-input.amount { font-family: 'DM Mono', monospace; font-size: 20px; }
+  select.modal-input { cursor: pointer; }
+  select.modal-input option { background: #1a1a22; }
+  .modal-type-toggle { display: flex; background: var(--surface2); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+  .modal-type-btn { flex: 1; padding: 10px; border: none; background: none; color: var(--text3); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s; }
+  .modal-type-btn.active-minus { background: rgba(248,113,113,0.15); color: var(--minus); }
+  .modal-type-btn.active-plus  { background: rgba(74,222,128,0.15);  color: var(--plus); }
+  .modal-check-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--surface2); border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; transition: border-color .2s; }
+  .modal-check-row.checked { border-color: var(--accent); }
+  .modal-check-box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--border); background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .2s; }
+  .modal-check-row.checked .modal-check-box { background: var(--accent); border-color: var(--accent); }
+  .modal-check-box svg { display: none; }
+  .modal-check-row.checked .modal-check-box svg { display: block; }
+  .modal-advance-detail { margin-top: 6px; background: rgba(251,191,36,0.05); border: 1px solid rgba(251,191,36,0.2); border-radius: var(--radius-sm); padding: 12px 14px; display: none; }
+  .modal-advance-detail.visible { display: block; }
+  .modal-advance-label { font-size: 11px; color: #fbbf24; margin-bottom: 6px; }
+  .modal-advance-input { width: 100%; background: var(--surface); border: 1px solid rgba(251,191,36,0.3); border-radius: var(--radius-sm); padding: 10px 14px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 18px; outline: none; -webkit-appearance: none; }
+  .modal-advance-input:focus { border-color: #fbbf24; }
+  .modal-footer { display: flex; gap: 10px; padding: 0 20px 20px; }
+  .modal-save-btn { flex: 1; background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: var(--radius-sm); padding: 15px; color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity .2s; }
+  .modal-save-btn:active { opacity: .85; }
+  .modal-del-btn { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: var(--radius-sm); padding: 15px 18px; color: var(--minus); font-family: inherit; font-size: 15px; cursor: pointer; transition: background .15s; }
+  .modal-del-btn:active { background: rgba(248,113,113,0.2); }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<div id="page-home" class="page active">
+  <div class="header">
+    <div class="header-label">かけいぼ</div>
+    <div class="header-title">収支サマリー</div>
+  </div>
+  <div class="month-selector">
+    <div class="month-nav" onclick="changeMonth(-1)">‹</div>
+    <div class="month-label" id="month-label">—</div>
+    <div class="month-nav" onclick="changeMonth(1)">›</div>
+  </div>
+  <div class="balance-card">
+    <div class="balance-label">実質支出（自分の分だけ）</div>
+    <div class="balance-amount zero" id="home-balance">¥0</div>
+    <div class="balance-sub">
+      <div class="balance-sub-item">
+        <div class="balance-sub-label">実費支出</div>
+        <div class="balance-sub-val" id="home-total-out">¥0</div>
+      </div>
+      <div class="balance-sub-item">
+        <div class="balance-sub-label">収入</div>
+        <div class="balance-sub-val" id="home-total-in">¥0</div>
+      </div>
+      <div class="balance-sub-item">
+        <div class="balance-sub-label">立替中</div>
+        <div class="balance-sub-val" id="home-advance">¥0</div>
+      </div>
+    </div>
+  </div>
+  <div class="summary-chips" id="home-chips"></div>
+  <button class="add-btn-home" onclick="goToInput()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    記録を追加
+  </button>
+  <div class="section-title">記録一覧</div>
+  <div class="record-list" id="record-list"></div>
+</div>
+
+<!-- INPUT -->
+<div id="page-input" class="page">
+  <div class="header">
+    <div class="header-label">かけいぼ</div>
+    <div class="header-title">記録を追加</div>
+  </div>
+  <div class="input-card">
+    <div class="field">
+      <div class="field-label">種別</div>
+      <div class="type-toggle">
+        <button class="type-btn active-minus" id="type-minus" onclick="setType('minus')">💸 支出</button>
+        <button class="type-btn" id="type-plus" onclick="setType('plus')">💰 収入</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">金額</div>
+      <input class="field-input amount" id="inp-amount" type="number" inputmode="numeric" placeholder="0" min="0">
+    </div>
+    <div class="field">
+      <div class="field-label" id="method-label">支払い方法</div>
+      <select class="field-input" id="inp-method"><option value="">選択してください</option></select>
+    </div>
+    <div class="field">
+      <div class="field-label">ジャンル</div>
+      <select class="field-input" id="inp-genre"><option value="">選択してください</option></select>
+    </div>
+
+    <!-- 支出オプション：立替 -->
+    <div id="field-advance" class="field">
+      <div class="field-label">立替オプション</div>
+      <div class="check-row" id="check-advance" onclick="toggleCheck('advance')">
+        <div class="check-box">
+          <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg>
+        </div>
+        <div>
+          <div class="check-label">まとめて支払い（立替）</div>
+          <div class="check-sub">複数人分を立て替えた。自分の分だけ総額に反映。</div>
+        </div>
+      </div>
+      <div class="advance-detail" id="advance-detail">
+        <div class="advance-detail-label">💡 自分の負担額</div>
+        <input class="advance-self-input" id="inp-self-amount" type="number" inputmode="numeric" placeholder="0" min="0">
+        <div class="advance-self-hint">ここに入力した金額だけが総支出に反映されます。<br>空欄 = 自分の負担¥0（全額他人の立替）として扱います。</div>
+      </div>
+    </div>
+
+    <!-- 収入オプション：返金 -->
+    <div id="field-refund" class="field" style="display:none">
+      <div class="field-label">返金オプション</div>
+      <div class="check-row" id="check-refund" onclick="toggleCheck('refund')">
+        <div class="check-box">
+          <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg>
+        </div>
+        <div>
+          <div class="check-label">立替の返金</div>
+          <div class="check-sub">立替分が戻ってきた。総支出には影響なし・収入内訳に表示。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">メモ（任意）</div>
+      <input class="field-input" id="inp-memo" type="text" placeholder="例：ランチ代">
+    </div>
+  </div>
+  <button class="submit-btn" onclick="addRecord()">記録する</button>
+</div>
+
+<!-- STATS -->
+<div id="page-stats" class="page">
+  <div class="header">
+    <div class="header-label">かけいぼ</div>
+    <div class="header-title">内訳</div>
+  </div>
+  <div class="month-selector">
+    <div class="month-nav" onclick="changeMonth(-1)">‹</div>
+    <div class="month-label" id="month-label-stats">—</div>
+    <div class="month-nav" onclick="changeMonth(1)">›</div>
+  </div>
+  <div class="stats-tabs">
+    <button class="stats-tab-btn active" id="stab-out" onclick="setStatsTab('out')">💸 支出</button>
+    <button class="stats-tab-btn" id="stab-in" onclick="setStatsTab('in')">💰 収入</button>
+  </div>
+  <div class="stats-section" id="stats-section"></div>
+</div>
+
+<!-- SETTINGS -->
+<div id="page-settings" class="page">
+  <div class="header">
+    <div class="header-label">かけいぼ</div>
+    <div class="header-title">設定</div>
+  </div>
+  <div class="settings-section">
+    <div class="settings-card">
+      <div class="settings-card-title">💳 支払い / 入金方法</div>
+      <div id="method-list"></div>
+      <div class="add-option-row">
+        <input class="add-option-input" id="new-method-input" type="text" placeholder="例：Suica、楽天ペイ…" maxlength="20">
+        <button class="add-option-btn" onclick="addOption('method')">追加</button>
+      </div>
+    </div>
+    <div class="settings-card">
+      <div class="settings-card-title">🗂️ ジャンル</div>
+      <div id="genre-list"></div>
+      <div class="add-option-row">
+        <input class="add-option-input" id="new-genre-input" type="text" placeholder="例：🎵 音楽、🐶 ペット…" maxlength="20">
+        <button class="add-option-btn" onclick="addOption('genre')">追加</button>
+      </div>
+    </div>
+
+    <!-- データ削除 -->
+    <div class="settings-card">
+      <div class="settings-card-title">🗑️ データ削除</div>
+      <div class="delete-month-row">
+        <div class="delete-month-label">月を選んで削除</div>
+        <div class="delete-month-controls">
+          <select class="delete-month-select" id="delete-month-select">
+            <option value="">月を選択…</option>
+          </select>
+          <button class="delete-month-btn" onclick="deleteMonth()">削除</button>
+        </div>
+      </div>
+      <div class="delete-all-row">
+        <div>
+          <div class="delete-all-label">全データを削除</div>
+          <div class="delete-all-sub">すべての記録を消去します</div>
+        </div>
+        <button class="delete-all-btn" onclick="deleteAllData()">全削除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="edit-modal" onclick="handleModalOverlayClick(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">記録を編集</div>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- 種別 -->
+      <div>
+        <div class="modal-field-label">種別</div>
+        <div class="modal-type-toggle">
+          <button class="modal-type-btn active-minus" id="m-type-minus" onclick="setModalType('minus')">💸 支出</button>
+          <button class="modal-type-btn" id="m-type-plus" onclick="setModalType('plus')">💰 収入</button>
+        </div>
+      </div>
+      <!-- 金額 -->
+      <div>
+        <div class="modal-field-label">金額</div>
+        <input class="modal-input amount" id="m-amount" type="number" inputmode="numeric" placeholder="0" min="0">
+      </div>
+      <!-- 支払い方法 -->
+      <div>
+        <div class="modal-field-label" id="m-method-label">支払い方法</div>
+        <select class="modal-input" id="m-method"><option value="">選択してください</option></select>
+      </div>
+      <!-- ジャンル -->
+      <div>
+        <div class="modal-field-label">ジャンル</div>
+        <select class="modal-input" id="m-genre"><option value="">選択してください</option></select>
+      </div>
+      <!-- 支出オプション -->
+      <div id="m-field-advance">
+        <div class="modal-field-label">立替オプション</div>
+        <div class="modal-check-row" id="m-check-advance" onclick="toggleModalCheck('advance')">
+          <div class="modal-check-box">
+            <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg>
+          </div>
+          <div>
+            <div style="font-size:14px">まとめて支払い（立替）</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">自分の分だけ総額に反映</div>
+          </div>
+        </div>
+        <div class="modal-advance-detail" id="m-advance-detail">
+          <div class="modal-advance-label">💡 自分の負担額</div>
+          <input class="modal-advance-input" id="m-self-amount" type="number" inputmode="numeric" placeholder="0" min="0">
+        </div>
+      </div>
+      <!-- 収入オプション -->
+      <div id="m-field-refund" style="display:none">
+        <div class="modal-field-label">返金オプション</div>
+        <div class="modal-check-row" id="m-check-refund" onclick="toggleModalCheck('refund')">
+          <div class="modal-check-box">
+            <svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg>
+          </div>
+          <div>
+            <div style="font-size:14px">立替の返金</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">収入内訳に表示・総支出に影響なし</div>
+          </div>
+        </div>
+      </div>
+      <!-- メモ -->
+      <div>
+        <div class="modal-field-label">メモ（任意）</div>
+        <input class="modal-input" id="m-memo" type="text" placeholder="例：ランチ代">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-del-btn" onclick="deleteFromModal()">🗑 削除</button>
+      <button class="modal-save-btn" onclick="saveEdit()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-home" onclick="switchTab('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+    ホーム
+  </button>
+  <button class="tab-btn" id="tab-input" onclick="switchTab('input')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    追加
+  </button>
+  <button class="tab-btn" id="tab-stats" onclick="switchTab('stats')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    内訳
+  </button>
+  <button class="tab-btn" id="tab-settings" onclick="switchTab('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    設定
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---- State ----
+let records = JSON.parse(localStorage.getItem('kakeibo_records') || '[]');
+let currentMonth = new Date();
+let currentType = 'minus';
+let checkState = { advance: false, refund: false };
+let statsTab = 'out';
+
+const DEFAULT_METHODS = ['現金','クレジットカード','デビットカード','PayPay','交通系IC','銀行振込','給料','その他'];
+const DEFAULT_GENRES  = ['🍽️ 外食','☕ カフェ','🛒 食材','🏥 病院','💊 薬局','🚃 交通','🛍️ ショッピング','🎮 娯楽','📚 書籍','🏠 家賃/光熱費','💰 収入','📦 その他'];
+let customMethods = JSON.parse(localStorage.getItem('kakeibo_methods') || 'null') || [...DEFAULT_METHODS];
+let customGenres  = JSON.parse(localStorage.getItem('kakeibo_genres')  || 'null') || [...DEFAULT_GENRES];
+function saveMethods() { localStorage.setItem('kakeibo_methods', JSON.stringify(customMethods)); }
+function saveGenres()  { localStorage.setItem('kakeibo_genres',  JSON.stringify(customGenres)); }
+
+// ---- Helpers ----
+const fmt     = n => '¥' + Math.abs(n).toLocaleString('ja-JP');
+const ym      = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const ymLabel = d => `${d.getFullYear()}年${d.getMonth()+1}月`;
+
+function monthRecords() {
+  return records.filter(r => r.ym === ym(currentMonth));
+}
+
+/**
+ * calcStats
+ * - 支出(type=minus):
+ *     立替(isAdvance) → selfAmount だけを実費計上、残りは「立替中」
+ *     通常            → amount を実費計上
+ * - 収入(type=plus):
+ *     通常            → totalIn に加算、net から引く
+ *     返金(isRefund)  → totalRefund に加算、net には影響しない
+ *
+ * net = realOut - totalIn  （返金は除外）
+ */
+function calcStats(recs) {
+  let realOut = 0, totalAdvanceOut = 0, totalIn = 0, totalRefund = 0;
+  for (const r of recs) {
+    if (r.type === 'plus') {
+      if (r.isRefund) totalRefund += r.amount;
+      else            totalIn    += r.amount;
+      continue;
+    }
+    if (r.isAdvance) {
+      const self = (r.selfAmount != null && r.selfAmount >= 0) ? r.selfAmount : 0;
+      realOut        += self;
+      totalAdvanceOut += r.amount - self;
+    } else {
+      realOut += r.amount;
+    }
+  }
+  const net = realOut - totalIn;
+  return { realOut, totalAdvanceOut, totalIn, totalRefund, net };
+}
+
+// ---- Dropdowns ----
+function populateDropdowns() {
+  const mSel = document.getElementById('inp-method');
+  const gSel = document.getElementById('inp-genre');
+  const mVal = mSel.value, gVal = gSel.value;
+  mSel.innerHTML = '<option value="">選択してください</option>' + customMethods.map(m=>`<option value="${m}">${m}</option>`).join('');
+  gSel.innerHTML = '<option value="">選択してください</option>' + customGenres.map(g=>`<option value="${g}">${g}</option>`).join('');
+  if (mVal) mSel.value = mVal;
+  if (gVal) gSel.value = gVal;
+}
+
+// ---- Settings ----
+function renderSettings() {
+  document.getElementById('method-list').innerHTML = customMethods.map((m,i)=>`
+    <div class="settings-item">
+      <div class="settings-item-icon">💳</div>
+      <div class="settings-item-name">${m}</div>
+      <button class="settings-item-del" onclick="removeOption('method',${i})">🗑</button>
+    </div>`).join('');
+  document.getElementById('genre-list').innerHTML = customGenres.map((g,i)=>{
+    const icon = g.split(' ')[0];
+    return `<div class="settings-item">
+      <div class="settings-item-icon">${icon}</div>
+      <div class="settings-item-name">${g}</div>
+      <button class="settings-item-del" onclick="removeOption('genre',${i})">🗑</button>
+    </div>`;
+  }).join('');
+
+  // 月選択ドロップダウンを記録のある月で更新
+  const months = [...new Set(records.map(r => r.ym))].sort().reverse();
+  const sel = document.getElementById('delete-month-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">月を選択…</option>' +
+    months.map(m => {
+      const [y, mo] = m.split('-');
+      return `<option value="${m}">${y}年${parseInt(mo)}月</option>`;
+    }).join('');
+  if (prev && months.includes(prev)) sel.value = prev;
+}
+function addOption(type) {
+  const id = type==='method' ? 'new-method-input' : 'new-genre-input';
+  const val = document.getElementById(id).value.trim();
+  if (!val) { showToast('⚠️ 名前を入力してください'); return; }
+  const list = type==='method' ? customMethods : customGenres;
+  if (list.includes(val)) { showToast('⚠️ すでに存在します'); return; }
+  list.push(val);
+  if (type==='method') saveMethods(); else saveGenres();
+  document.getElementById(id).value = '';
+  renderSettings(); populateDropdowns(); showToast('✅ 追加しました');
+}
+function removeOption(type, index) {
+  const list = type==='method' ? customMethods : customGenres;
+  if (!confirm(`「${list[index]}」を削除しますか？\n（過去の記録には影響しません）`)) return;
+  list.splice(index, 1);
+  if (type==='method') saveMethods(); else saveGenres();
+  renderSettings(); populateDropdowns(); showToast('🗑 削除しました');
+}
+
+// ---- Render Home ----
+function renderHome() {
+  const recs = monthRecords();
+  const { realOut, totalAdvanceOut, totalIn, totalRefund, net } = calcStats(recs);
+  document.getElementById('month-label').textContent = ymLabel(currentMonth);
+
+  const el = document.getElementById('home-balance');
+  el.textContent = (net >= 0 ? '-' : '+') + '¥' + Math.abs(net).toLocaleString('ja-JP');
+  el.className = 'balance-amount ' + (net > 0 ? 'minus' : net < 0 ? 'plus' : 'zero');
+
+  document.getElementById('home-total-out').textContent = fmt(realOut);
+  document.getElementById('home-total-in').textContent  = fmt(totalIn + totalRefund);
+  document.getElementById('home-advance').textContent   = fmt(Math.max(0, totalAdvanceOut));
+
+  // Chips: top genres by real spend
+  const genreMap = {};
+  for (const r of recs) {
+    if (r.type !== 'minus') continue;
+    const val = r.isAdvance ? ((r.selfAmount != null) ? r.selfAmount : 0) : r.amount;
+    if (val > 0) genreMap[r.genre] = (genreMap[r.genre]||0) + val;
+  }
+  document.getElementById('home-chips').innerHTML = Object.entries(genreMap)
+    .sort((a,b)=>b[1]-a[1]).slice(0,4)
+    .map(([g,v])=>`<div class="chip">${g} <span>${fmt(v)}</span></div>`).join('');
+
+  // Recent list — 当月の全件表示
+  const list = document.getElementById('record-list');
+  const recent = [...recs].reverse();
+  if (!recent.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>まだ記録がありません</div>';
+    return;
+  }
+  list.innerHTML = recent.map(r => {
+    const isPlus = r.type === 'plus';
+    const icon = r.genre ? r.genre.split(' ')[0] : (isPlus ? '💰' : '💸');
+    const genreText = r.genre || (isPlus ? '収入' : '支出');
+    const dispAmt = r.isAdvance ? ((r.selfAmount != null) ? r.selfAmount : 0) : r.amount;
+    const amtStr = (isPlus ? '+' : '-') + fmt(dispAmt);
+    const badges = [];
+    if (r.isAdvance) badges.push(`<span class="badge advance">立替 計${fmt(r.amount)}</span>`);
+    if (r.isRefund)  badges.push('<span class="badge refund">返金</span>');
+    const memoText = r.memo ? ` · ${r.memo}` : '';
+    return `<div class="record-item" onclick="openEditModal('${r.id}')">
+      <div class="record-icon">${icon}</div>
+      <div class="record-info">
+        <div class="record-genre">${genreText}${memoText}</div>
+        <div class="record-meta">${r.method||''}${badges.join('')}</div>
+      </div>
+      <div class="record-amount ${isPlus?'plus':'minus'}">${amtStr}</div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0;color:var(--text3)"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    </div>`;
+  }).join('');
+}
+
+// ---- Render Stats ----
+function setStatsTab(tab) {
+  statsTab = tab;
+  document.getElementById('stab-out').classList.toggle('active', tab==='out');
+  document.getElementById('stab-in').classList.toggle('active', tab==='in');
+  renderStats();
+}
+
+function renderStats() {
+  document.getElementById('month-label-stats').textContent = ymLabel(currentMonth);
+  const recs = monthRecords();
+  const section = document.getElementById('stats-section');
+  if (!recs.length) { section.innerHTML = '<div class="empty"><div class="empty-icon">📊</div>データがありません</div>'; return; }
+
+  const buildRows = (map, max, isIncome) => Object.entries(map)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([name,val]) => {
+      const icon = name.split(' ')[0];
+      const pct = max > 0 ? (val/max*100).toFixed(0) : 0;
+      return `<div class="stat-row">
+        <div class="stat-icon">${icon.length<=2?icon:'•'}</div>
+        <div class="stat-name">${name}</div>
+        <div class="stat-bar-wrap"><div class="stat-bar${isIncome?' income':''}" style="width:${pct}%"></div></div>
+        <div class="stat-amount">${isIncome?'+':'-'}${fmt(val)}</div>
+      </div>`;
+    }).join('');
+
+  if (statsTab === 'out') {
+    const methodMap={}, genreMap={};
+    let maxM=0, maxG=0;
+    for (const r of recs) {
+      if (r.type !== 'minus') continue;
+      const val = r.isAdvance ? ((r.selfAmount!=null)?r.selfAmount:0) : r.amount;
+      if (val <= 0) continue;
+      if (r.method) { methodMap[r.method]=(methodMap[r.method]||0)+val; maxM=Math.max(maxM,methodMap[r.method]); }
+      if (r.genre)  { genreMap[r.genre]  =(genreMap[r.genre]  ||0)+val; maxG=Math.max(maxG,genreMap[r.genre]); }
+    }
+    section.innerHTML = `
+      <div class="stats-card">
+        <div class="stats-card-title">💳 支払い方法別</div>
+        ${Object.keys(methodMap).length ? buildRows(methodMap,maxM,false) : '<div class="empty" style="padding:20px">データなし</div>'}
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">🗂️ ジャンル別</div>
+        ${Object.keys(genreMap).length ? buildRows(genreMap,maxG,false) : '<div class="empty" style="padding:20px">データなし</div>'}
+      </div>`;
+  } else {
+    // 収入タブ: 返金は「🔄 立替返金」として表示
+    const methodMap={}, genreMap={};
+    let maxM=0, maxG=0;
+    for (const r of recs) {
+      if (r.type !== 'plus') continue;
+      const genreKey = r.isRefund ? '🔄 立替返金' : (r.genre||'💰 収入');
+      if (r.method) { methodMap[r.method]=(methodMap[r.method]||0)+r.amount; maxM=Math.max(maxM,methodMap[r.method]); }
+      genreMap[genreKey]=(genreMap[genreKey]||0)+r.amount; maxG=Math.max(maxG,genreMap[genreKey]);
+    }
+    section.innerHTML = `
+      <div class="stats-card">
+        <div class="stats-card-title">💳 入金方法別</div>
+        ${Object.keys(methodMap).length ? buildRows(methodMap,maxM,true) : '<div class="empty" style="padding:20px">データなし</div>'}
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">🗂️ ジャンル別（返金含む）</div>
+        ${Object.keys(genreMap).length ? buildRows(genreMap,maxG,true) : '<div class="empty" style="padding:20px">データなし</div>'}
+      </div>`;
+  }
+}
+
+// ---- Actions ----
+function switchTab(tab) {
+  ['home','input','stats','settings'].forEach(t => {
+    document.getElementById('page-'+t).classList.toggle('active', t===tab);
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+  if (tab==='home')     renderHome();
+  if (tab==='stats')    renderStats();
+  if (tab==='settings') renderSettings();
+}
+function goToInput() { switchTab('input'); }
+
+function changeMonth(dir) {
+  currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth()+dir, 1);
+  renderHome(); renderStats();
+}
+
+function setType(t) {
+  currentType = t;
+  document.getElementById('type-minus').className = 'type-btn'+(t==='minus'?' active-minus':'');
+  document.getElementById('type-plus').className  = 'type-btn'+(t==='plus' ?' active-plus' :'');
+  document.getElementById('method-label').textContent = t==='plus' ? '入金方法' : '支払い方法';
+  document.getElementById('field-advance').style.display = t==='minus' ? '' : 'none';
+  document.getElementById('field-refund').style.display  = t==='plus'  ? '' : 'none';
+  if (t==='plus') {
+    checkState.advance = false;
+    document.getElementById('advance-detail').classList.remove('visible');
+    document.getElementById('inp-self-amount').value = '';
+  }
+  if (t==='minus') checkState.refund = false;
+  updateChecks();
+}
+
+function toggleCheck(key) {
+  checkState[key] = !checkState[key];
+  updateChecks();
+  if (key==='advance') {
+    document.getElementById('advance-detail').classList.toggle('visible', checkState.advance);
+    if (!checkState.advance) document.getElementById('inp-self-amount').value = '';
+  }
+}
+
+function updateChecks() {
+  ['advance','refund'].forEach(k => {
+    const el = document.getElementById('check-'+k);
+    if (el) el.className = 'check-row'+(checkState[k]?' checked':'');
+  });
+}
+
+function addRecord() {
+  const amount = parseFloat(document.getElementById('inp-amount').value);
+  const method = document.getElementById('inp-method').value;
+  const genre  = document.getElementById('inp-genre').value;
+  const memo   = document.getElementById('inp-memo').value.trim();
+  if (!amount || amount<=0) { showToast('⚠️ 金額を入力してください'); return; }
+  if (!method) { showToast('⚠️ 支払い/入金方法を選択してください'); return; }
+  if (!genre)  { showToast('⚠️ ジャンルを選択してください'); return; }
+
+  let selfAmount = null;
+  if (currentType==='minus' && checkState.advance) {
+    const sv = parseFloat(document.getElementById('inp-self-amount').value);
+    selfAmount = (!isNaN(sv) && sv >= 0) ? sv : 0;
+    if (selfAmount > amount) { showToast('⚠️ 自分の負担額が合計を超えています'); return; }
+  }
+
+  const now = new Date();
+  const rec = {
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2),
+    type: currentType, amount, selfAmount, method, genre, memo,
+    isAdvance: currentType==='minus' && checkState.advance,
+    isRefund:  currentType==='plus'  && checkState.refund,
+    ym: ym(now), date: now.toISOString(),
+  };
+  records.push(rec);
+  localStorage.setItem('kakeibo_records', JSON.stringify(records));
+
+  document.getElementById('inp-amount').value = '';
+  document.getElementById('inp-method').value = '';
+  document.getElementById('inp-genre').value  = '';
+  document.getElementById('inp-memo').value   = '';
+  document.getElementById('inp-self-amount').value = '';
+  document.getElementById('advance-detail').classList.remove('visible');
+  checkState = { advance: false, refund: false };
+  updateChecks();
+  setType('minus');
+  showToast('✅ 記録しました');
+  currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  setTimeout(() => switchTab('home'), 600);
+}
+
+function deleteRecord(id) {
+  if (!confirm('この記録を削除しますか？')) return;
+  records = records.filter(r => r.id !== id);
+  localStorage.setItem('kakeibo_records', JSON.stringify(records));
+  renderHome();
+}
+
+// ---- Edit Modal ----
+let editingId = null;
+let modalCheckState = { advance: false, refund: false };
+
+function openEditModal(id) {
+  const r = records.find(r => r.id === id);
+  if (!r) return;
+  editingId = id;
+  modalCheckState = { advance: !!r.isAdvance, refund: !!r.isRefund };
+
+  // populate modal dropdowns
+  const mSel = document.getElementById('m-method');
+  const gSel = document.getElementById('m-genre');
+  mSel.innerHTML = '<option value="">選択してください</option>' + customMethods.map(m=>`<option value="${m}">${m}</option>`).join('');
+  gSel.innerHTML = '<option value="">選択してください</option>' + customGenres.map(g=>`<option value="${g}">${g}</option>`).join('');
+
+  // fill values
+  setModalType(r.type);
+  document.getElementById('m-amount').value  = r.amount;
+  mSel.value = r.method || '';
+  gSel.value = r.genre  || '';
+  document.getElementById('m-memo').value    = r.memo || '';
+
+  if (r.isAdvance) {
+    document.getElementById('m-self-amount').value = (r.selfAmount != null) ? r.selfAmount : '';
+    document.getElementById('m-advance-detail').classList.add('visible');
+  } else {
+    document.getElementById('m-self-amount').value = '';
+    document.getElementById('m-advance-detail').classList.remove('visible');
+  }
+
+  updateModalChecks();
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editingId = null;
+}
+
+function handleModalOverlayClick(e) {
+  if (e.target === document.getElementById('edit-modal')) closeEditModal();
+}
+
+function setModalType(t) {
+  document.getElementById('m-type-minus').className = 'modal-type-btn'+(t==='minus'?' active-minus':'');
+  document.getElementById('m-type-plus').className  = 'modal-type-btn'+(t==='plus' ?' active-plus' :'');
+  document.getElementById('m-method-label').textContent = t==='plus' ? '入金方法' : '支払い方法';
+  document.getElementById('m-field-advance').style.display = t==='minus' ? '' : 'none';
+  document.getElementById('m-field-refund').style.display  = t==='plus'  ? '' : 'none';
+  if (t==='plus')  { modalCheckState.advance = false; document.getElementById('m-advance-detail').classList.remove('visible'); }
+  if (t==='minus') { modalCheckState.refund  = false; }
+  updateModalChecks();
+  // store current type in a data attr
+  document.getElementById('edit-modal').dataset.type = t;
+}
+
+function toggleModalCheck(key) {
+  modalCheckState[key] = !modalCheckState[key];
+  updateModalChecks();
+  if (key==='advance') {
+    document.getElementById('m-advance-detail').classList.toggle('visible', modalCheckState.advance);
+    if (!modalCheckState.advance) document.getElementById('m-self-amount').value = '';
+  }
+}
+
+function updateModalChecks() {
+  ['advance','refund'].forEach(k => {
+    const el = document.getElementById('m-check-'+k);
+    if (el) el.className = 'modal-check-row'+(modalCheckState[k]?' checked':'');
+  });
+}
+
+function saveEdit() {
+  const amount = parseFloat(document.getElementById('m-amount').value);
+  const method = document.getElementById('m-method').value;
+  const genre  = document.getElementById('m-genre').value;
+  const memo   = document.getElementById('m-memo').value.trim();
+  const type   = document.getElementById('edit-modal').dataset.type || 'minus';
+
+  if (!amount || amount <= 0) { showToast('⚠️ 金額を入力してください'); return; }
+  if (!method) { showToast('⚠️ 支払い/入金方法を選択してください'); return; }
+  if (!genre)  { showToast('⚠️ ジャンルを選択してください'); return; }
+
+  let selfAmount = null;
+  if (type === 'minus' && modalCheckState.advance) {
+    const sv = parseFloat(document.getElementById('m-self-amount').value);
+    selfAmount = (!isNaN(sv) && sv >= 0) ? sv : 0;
+    if (selfAmount > amount) { showToast('⚠️ 自分の負担額が合計を超えています'); return; }
+  }
+
+  const idx = records.findIndex(r => r.id === editingId);
+  if (idx === -1) return;
+  records[idx] = {
+    ...records[idx],
+    type, amount, selfAmount, method, genre, memo,
+    isAdvance: type==='minus' && modalCheckState.advance,
+    isRefund:  type==='plus'  && modalCheckState.refund,
+  };
+  localStorage.setItem('kakeibo_records', JSON.stringify(records));
+  closeEditModal();
+  renderHome();
+  showToast('✅ 保存しました');
+}
+
+function deleteFromModal() {
+  if (!editingId) return;
+  const btn = document.querySelector('.modal-del-btn');
+  if (btn.dataset.confirm !== '1') {
+    btn.textContent = '本当に削除？';
+    btn.dataset.confirm = '1';
+    btn.style.background = 'rgba(248,113,113,0.25)';
+    setTimeout(() => {
+      btn.textContent = '🗑 削除';
+      btn.dataset.confirm = '0';
+      btn.style.background = '';
+    }, 3000);
+    return;
+  }
+  records = records.filter(r => r.id !== editingId);
+  localStorage.setItem('kakeibo_records', JSON.stringify(records));
+  closeEditModal();
+  renderHome();
+  showToast('🗑 削除しました');
+}
+
+function deleteMonth() {
+  const sel = document.getElementById('delete-month-select').value;
+  if (!sel) { showToast('⚠️ 月を選択してください'); return; }
+  const btn = document.querySelector('.delete-month-btn');
+  if (btn.dataset.confirm !== '1') {
+    const [y, mo] = sel.split('-');
+    btn.textContent = `${y}年${parseInt(mo)}月を削除？`;
+    btn.dataset.confirm = '1';
+    setTimeout(() => { btn.textContent = '削除'; btn.dataset.confirm = '0'; }, 3000);
+    return;
+  }
+  const [y, mo] = sel.split('-');
+  records = records.filter(r => r.ym !== sel);
+  localStorage.setItem('kakeibo_records', JSON.stringify(records));
+  btn.textContent = '削除'; btn.dataset.confirm = '0';
+  renderSettings();
+  renderHome();
+  showToast(`🗑 ${y}年${parseInt(mo)}月を削除しました`);
+}
+
+function deleteAllData() {
+  const btn = document.querySelector('.delete-all-btn');
+  if (btn.dataset.confirm !== '1') {
+    btn.textContent = '本当に全削除？';
+    btn.dataset.confirm = '1';
+    btn.style.background = 'rgba(248,113,113,0.25)';
+    setTimeout(() => { btn.textContent = '全削除'; btn.dataset.confirm = '0'; btn.style.background = ''; }, 3000);
+    return;
+  }
+  records = [];
+  localStorage.setItem('kakeibo_records', JSON.stringify(records));
+  btn.textContent = '全削除'; btn.dataset.confirm = '0'; btn.style.background = '';
+  renderSettings();
+  renderHome();
+  showToast('🗑 全データを削除しました');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ---- Init ----
+currentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+populateDropdowns();
+setType('minus');
+renderHome();
+</script>
+</body>
+</html>
