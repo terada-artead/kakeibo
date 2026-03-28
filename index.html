@@ -147,6 +147,17 @@
   .add-option-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: var(--radius-sm); padding: 10px 16px; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: opacity .2s; }
   .add-option-btn:active { opacity: .8; }
 
+  /* Recurring */
+  .recurring-item { display:flex; align-items:center; padding:13px 16px; border-bottom:1px solid var(--border); gap:10px; }
+  .recurring-item:last-child { border-bottom:none; }
+  .recurring-icon { font-size:18px; width:28px; text-align:center; flex-shrink:0; }
+  .recurring-info { flex:1; min-width:0; }
+  .recurring-name { font-size:14px; font-weight:700; }
+  .recurring-meta { font-size:11px; color:var(--text3); margin-top:2px; }
+  .recurring-amount { font-family:'DM Mono',monospace; font-size:14px; color:var(--minus); flex-shrink:0; }
+  .recurring-del { background:none; border:none; color:var(--text3); cursor:pointer; font-size:18px; padding:4px 6px; border-radius:6px; flex-shrink:0; }
+  .recurring-del:active { color:var(--minus); }
+
   /* Data deletion */
   .delete-month-row { padding: 14px 16px; border-bottom: 1px solid var(--border); }
   .delete-month-label { font-size: 14px; margin-bottom: 10px; }
@@ -368,6 +379,37 @@
       </div>
     </div>
 
+    <!-- 繰り返し支払い -->
+    <div class="settings-card">
+      <div class="settings-card-title">🔁 繰り返し支払い</div>
+      <div id="recurring-list"></div>
+      <div class="add-option-row" style="flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px">
+          <input class="add-option-input" id="rec-name" type="text" placeholder="名前（例：家賃）" maxlength="20" style="flex:2">
+          <input class="add-option-input" id="rec-amount" type="number" inputmode="numeric" placeholder="金額" style="flex:1;font-family:'DM Mono',monospace">
+        </div>
+        <div style="display:flex;gap:8px">
+          <select class="add-option-input" id="rec-method" style="flex:1"></select>
+          <select class="add-option-input" id="rec-genre" style="flex:1"></select>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="add-option-input" id="rec-freq" style="flex:1" onchange="updateRecFreqUI()">
+            <option value="monthly">毎月</option>
+            <option value="weekly">毎週</option>
+            <option value="daily">毎日</option>
+          </select>
+          <select class="add-option-input" id="rec-day-month" style="flex:1">
+            <!-- 1〜28日 -->
+          </select>
+          <select class="add-option-input" id="rec-day-week" style="flex:1;display:none">
+            <option value="0">日曜</option><option value="1">月曜</option><option value="2">火曜</option>
+            <option value="3">水曜</option><option value="4">木曜</option><option value="5">金曜</option><option value="6">土曜</option>
+          </select>
+        </div>
+        <button class="add-option-btn" style="width:100%" onclick="addRecurring()">繰り返し支払いを追加</button>
+      </div>
+    </div>
+
     <!-- データ削除 -->
     <div class="settings-card">
       <div class="settings-card-title">🗑️ データ削除</div>
@@ -543,6 +585,133 @@ function calcStats(recs) {
   return { realOut, totalAdvanceOut, totalIn, totalRefund, net };
 }
 
+// ---- Recurring Payments ----
+let recurringList = JSON.parse(localStorage.getItem('kakeibo_recurring') || '[]');
+function saveRecurring() { localStorage.setItem('kakeibo_recurring', JSON.stringify(recurringList)); }
+
+function initRecurringUI() {
+  const dm = document.getElementById('rec-day-month');
+  dm.innerHTML = Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}日</option>`).join('');
+  updateRecFreqUI();
+  populateRecurringDropdowns();
+}
+
+function populateRecurringDropdowns() {
+  const mSel = document.getElementById('rec-method');
+  const gSel = document.getElementById('rec-genre');
+  mSel.innerHTML = '<option value="">支払い方法</option>' + customMethods.map(m=>`<option value="${m}">${m}</option>`).join('');
+  gSel.innerHTML = '<option value="">ジャンル</option>'   + customGenres.map(g=>`<option value="${g}">${g}</option>`).join('');
+}
+
+function updateRecFreqUI() {
+  const freq = document.getElementById('rec-freq').value;
+  document.getElementById('rec-day-month').style.display = freq==='monthly' ? '' : 'none';
+  document.getElementById('rec-day-week').style.display  = freq==='weekly'  ? '' : 'none';
+}
+
+function addRecurring() {
+  const name   = document.getElementById('rec-name').value.trim();
+  const amount = parseFloat(document.getElementById('rec-amount').value);
+  const method = document.getElementById('rec-method').value;
+  const genre  = document.getElementById('rec-genre').value;
+  const freq   = document.getElementById('rec-freq').value;
+  const dayM   = parseInt(document.getElementById('rec-day-month').value);
+  const dayW   = parseInt(document.getElementById('rec-day-week').value);
+  if (!name)               { showToast('⚠️ 名前を入力してください'); return; }
+  if (!amount || amount<=0){ showToast('⚠️ 金額を入力してください'); return; }
+  if (!method)             { showToast('⚠️ 支払い方法を選択してください'); return; }
+  if (!genre)              { showToast('⚠️ ジャンルを選択してください'); return; }
+  recurringList.push({
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2),
+    name, amount, method, genre, freq,
+    dayOfMonth: freq==='monthly' ? dayM : null,
+    dayOfWeek:  freq==='weekly'  ? dayW : null,
+    lastApplied: null,
+  });
+  saveRecurring();
+  document.getElementById('rec-name').value   = '';
+  document.getElementById('rec-amount').value = '';
+  renderSettings();
+  showToast('✅ 繰り返し支払いを追加しました');
+}
+
+function removeRecurring(id) {
+  const btn = document.querySelector(`.recurring-del[data-id="${id}"]`);
+  if (btn && btn.dataset.confirm !== '1') {
+    btn.textContent = '本当に削除？'; btn.dataset.confirm = '1';
+    setTimeout(()=>{ if(btn){btn.textContent='🗑'; btn.dataset.confirm='0';} }, 3000);
+    return;
+  }
+  recurringList = recurringList.filter(r=>r.id!==id);
+  saveRecurring();
+  renderSettings();
+  showToast('🗑 削除しました');
+}
+
+function renderRecurringList() {
+  const el = document.getElementById('recurring-list');
+  if (!el) return;
+  if (!recurringList.length) {
+    el.innerHTML = '<div style="padding:16px;font-size:13px;color:var(--text3);text-align:center">登録なし</div>';
+    return;
+  }
+  const freqLabel = { monthly:'毎月', weekly:'毎週', daily:'毎日' };
+  const weekLabel = ['日','月','火','水','木','金','土'];
+  el.innerHTML = recurringList.map(r => {
+    const icon = r.genre ? r.genre.split(' ')[0] : '🔁';
+    let timing = freqLabel[r.freq] || '';
+    if (r.freq==='monthly') timing += `${r.dayOfMonth}日`;
+    if (r.freq==='weekly')  timing += `${weekLabel[r.dayOfWeek]}曜日`;
+    return `<div class="recurring-item">
+      <div class="recurring-icon">${icon}</div>
+      <div class="recurring-info">
+        <div class="recurring-name">${r.name}</div>
+        <div class="recurring-meta">${timing} · ${r.method} · ${r.genre}</div>
+      </div>
+      <div class="recurring-amount">-¥${r.amount.toLocaleString('ja-JP')}</div>
+      <button class="recurring-del" data-id="${r.id}" onclick="removeRecurring('${r.id}')">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+function applyRecurringPayments() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  let applied = 0;
+  recurringList.forEach(r => {
+    const last = r.lastApplied ? new Date(r.lastApplied) : null;
+    if (last) last.setHours(0,0,0,0);
+    const startDate = last ? new Date(last.getTime()+86400000) : new Date(today);
+    for (let d = new Date(startDate); d <= today; d = new Date(d.getTime()+86400000)) {
+      let should = false;
+      if (r.freq==='daily') should = true;
+      else if (r.freq==='weekly')  should = d.getDay()===r.dayOfWeek;
+      else if (r.freq==='monthly') should = d.getDate()===r.dayOfMonth;
+      if (should) {
+        const dateStr = d.toISOString().slice(0,10);
+        const exists = records.some(rec => rec.recurringId===r.id && rec.date.startsWith(dateStr));
+        if (!exists) {
+          const ymKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          records.push({
+            id: Date.now().toString(36)+Math.random().toString(36).slice(2)+applied,
+            recurringId: r.id,
+            type:'minus', amount:r.amount, selfAmount:null,
+            method:r.method, genre:r.genre, memo:`🔁 ${r.name}`,
+            isAdvance:false, isRefund:false, ym:ymKey,
+            date: new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0,0).toISOString(),
+          });
+          applied++;
+        }
+      }
+    }
+    r.lastApplied = today.toISOString();
+  });
+  if (applied > 0) {
+    localStorage.setItem('kakeibo_records', JSON.stringify(records));
+    saveRecurring();
+    showToast(`🔁 繰り返し支払い ${applied}件を自動追加しました`);
+  }
+}
+
 // ---- Dropdowns ----
 function populateDropdowns() {
   const mSel = document.getElementById('inp-method');
@@ -581,6 +750,8 @@ function renderSettings() {
       return `<option value="${m}">${y}年${parseInt(mo)}月</option>`;
     }).join('');
   if (prev && months.includes(prev)) sel.value = prev;
+  renderRecurringList();
+  populateRecurringDropdowns();
 }
 function addOption(type) {
   const id = type==='method' ? 'new-method-input' : 'new-genre-input';
@@ -994,6 +1165,8 @@ function showToast(msg) {
 currentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 populateDropdowns();
 setType('minus');
+initRecurringUI();
+applyRecurringPayments();
 renderHome();
 </script>
 </body>
