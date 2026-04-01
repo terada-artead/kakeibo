@@ -1,1142 +1,1680 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0c0c14">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="mobile-web-app-capable" content="yes">
-<title>かけいぼ</title>
-<link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIuOBi+OBkeOBhOOBvCIsCiAgInNob3J0X25hbWUiOiAi5a625a626JmHIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwYzBjMTQiLAogICJ0aGVtZV9jb2xvciI6ICIjMGMwYzE0IiwKICAiaWNvbnMiOiBbXQp9">
-<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-:root {
-  --bg: #0c0c14;
-  --surface: #14141f;
-  --surface2: #1c1c2b;
-  --surface3: #242438;
-  --border: #2a2a40;
-  --border-l: #35355a;
-  --accent: #6d5cff;
-  --accent-l: #8b7fff;
-  --accent-glow: rgba(109,92,255,0.25);
-  --sub: #c084fc;
-  --plus: #34d399;
-  --plus-bg: rgba(52,211,153,0.1);
-  --minus: #fb7185;
-  --minus-bg: rgba(251,113,133,0.1);
-  --warn: #fbbf24;
-  --warn-bg: rgba(251,191,36,0.08);
-  --text: #e8e8f4;
-  --text2: #9999b8;
-  --text3: #5e5e80;
-  --r: 14px;
-  --r-sm: 10px;
+"""
+TASKMASTER v5
+変更点 (v5):
+- 削除時に確認ダイアログを表示（誤操作防止）
+- メモをカード上に表示（親・並列・直列タスク全て）
+- 検索が直列タスク・メモにも対応
+- 日付タブに親タスクも表示
+- 今日タブでステータス変更が保存されるよう修正
+- キーボードショートカット追加（Ctrl+N/F/0, Esc）
+- インポート整理・未使用変数削除
+依存: PyQt6
+"""
+
+import sys, json, os, uuid
+from datetime import date
+from itertools import groupby
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QLineEdit, QTextEdit, QComboBox,
+    QScrollArea, QFrame, QDialog, QSizePolicy, QTabWidget,
+    QDateEdit, QCheckBox, QMessageBox, QGraphicsOpacityEffect,
+)
+from PyQt6.QtCore import Qt, QMimeData, QPoint, pyqtSignal, QDate
+from PyQt6.QtGui import QFont, QDrag, QShortcut, QKeySequence
+
+# ══════════════════════════════════════════════════════════
+#  THEME
+# ══════════════════════════════════════════════════════════
+C = {
+    "bg":      "#0b0b0e", "surface": "#14141a",
+    "s2":      "#1c1c24", "s3":      "#22222c",
+    "border":  "#28283a", "border2": "#363648",
+    "accent":  "#e8ff47", "red":     "#ff4757",
+    "orange":  "#ffaa3a", "green":   "#3dff8f",
+    "blue":    "#3dcfff", "purple":  "#b06fff",
+    "text":    "#e4e4f0", "sub":     "#6a6a80",
+    "sub2":    "#3a3a50",
 }
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Zen Kaku Gothic New',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
-
-/* ========== TAB BAR ========== */
-.tab-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(12,12,20,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom)}
-.tab-btn{flex:1;padding:10px 0 8px;background:none;border:none;color:var(--text3);font-family:inherit;font-size:10px;font-weight:500;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:color .2s;position:relative}
-.tab-btn.active{color:var(--accent-l)}
-.tab-btn.active::before{content:'';position:absolute;top:-1px;left:50%;transform:translateX(-50%);width:24px;height:2px;background:var(--accent);border-radius:1px}
-.tab-btn svg{width:22px;height:22px}
-
-/* ========== PAGES ========== */
-.page{display:none;padding:0 0 88px;min-height:100vh;min-height:100dvh}
-.page.active{display:block;animation:pageFade .3s ease}
-@keyframes pageFade{from{opacity:0}to{opacity:1}}
-
-/* ========== HEADER ========== */
-.header{padding:calc(52px + env(safe-area-inset-top)) 20px 18px;position:relative}
-.header::after{content:'';position:absolute;top:0;left:0;right:0;height:100%;background:radial-gradient(ellipse 80% 70% at 30% 0%,rgba(109,92,255,0.08),transparent);pointer-events:none}
-.header-sub{font-size:11px;letter-spacing:.18em;color:var(--text3);text-transform:uppercase;margin-bottom:4px;font-weight:500}
-.header-title{font-size:24px;font-weight:900;letter-spacing:-.01em}
-
-/* ========== MONTH SELECTOR ========== */
-.month-sel{display:flex;align-items:center;gap:8px;padding:0 20px 16px}
-.month-nav{width:36px;height:36px;border-radius:10px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:18px;transition:all .15s;flex-shrink:0}
-.month-nav:active{background:var(--surface2);border-color:var(--accent);color:var(--accent-l);transform:scale(.93)}
-.month-label{flex:1;text-align:center;font-size:15px;font-weight:700;letter-spacing:.02em}
-.month-today{font-size:11px;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-family:inherit;font-weight:700;cursor:pointer;flex-shrink:0;transition:opacity .15s}
-.month-today:active{opacity:.7}
-
-/* ========== BALANCE CARD ========== */
-.bal-card{margin:0 16px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px 22px;position:relative;overflow:hidden}
-.bal-card::before{content:'';position:absolute;top:-60px;right:-40px;width:160px;height:160px;background:radial-gradient(circle,var(--accent-glow),transparent 70%);pointer-events:none}
-.bal-label{font-size:11px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px;font-weight:500}
-.bal-amount{font-family:'IBM Plex Mono',monospace;font-size:36px;font-weight:600;letter-spacing:-.03em;line-height:1}
-.bal-amount.is-minus{color:var(--minus)}
-.bal-amount.is-plus{color:var(--plus)}
-.bal-amount.is-zero{color:var(--text2)}
-.bal-row{margin-top:18px;display:flex;gap:0;padding-top:16px;border-top:1px solid var(--border)}
-.bal-item{flex:1;text-align:center;position:relative}
-.bal-item:not(:last-child)::after{content:'';position:absolute;right:0;top:2px;bottom:2px;width:1px;background:var(--border)}
-.bal-item-label{font-size:10px;color:var(--text3);letter-spacing:.06em;margin-bottom:4px;font-weight:500}
-.bal-item-val{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:var(--text2)}
-
-/* ========== CHIPS ========== */
-.chips{display:flex;gap:8px;padding:0 16px 14px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-.chips::-webkit-scrollbar{display:none}
-.chip{flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--text2);white-space:nowrap;font-weight:500}
-.chip b{color:var(--text);font-weight:700}
-
-/* ========== ADD BUTTON ========== */
-.add-btn-main{margin:4px 16px 0;width:calc(100% - 32px);background:var(--accent);border:none;border-radius:var(--r-sm);padding:15px;color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;letter-spacing:.03em;position:relative;overflow:hidden}
-.add-btn-main::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.1));pointer-events:none}
-.add-btn-main:active{transform:scale(.97);opacity:.85}
-.add-btn-main svg{flex-shrink:0}
-
-/* ========== SECTION TITLE ========== */
-.sec-title{padding:20px 20px 10px;font-size:11px;letter-spacing:.14em;color:var(--text3);text-transform:uppercase;font-weight:700;display:flex;align-items:center;justify-content:space-between}
-.sec-count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text3);font-weight:500}
-
-/* ========== RECORD LIST ========== */
-.rec-list{padding:0 16px;display:flex;flex-direction:column;gap:6px}
-.rec-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .15s;animation:slideUp .25s ease both}
-.rec-item:active{background:var(--surface2);border-color:var(--border-l);transform:scale(.985)}
-@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.rec-icon{width:40px;height:40px;border-radius:10px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.rec-info{flex:1;min-width:0}
-.rec-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rec-meta{font-size:11px;color:var(--text3);margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.badge{border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;letter-spacing:.02em}
-.badge-adv{background:var(--warn-bg);color:var(--warn)}
-.badge-ref{background:var(--plus-bg);color:var(--plus)}
-.rec-amt{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;flex-shrink:0}
-.rec-amt.is-minus{color:var(--minus)}
-.rec-amt.is-plus{color:var(--plus)}
-.rec-edit-icon{flex-shrink:0;color:var(--text3);opacity:.5}
-
-/* ========== EMPTY ========== */
-.empty{padding:48px 20px;text-align:center;color:var(--text3);font-size:13px;line-height:1.8}
-.empty-ico{font-size:42px;margin-bottom:12px;opacity:.6}
-
-/* ========== INPUT CARD ========== */
-.inp-card{margin:0 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px 18px}
-.fld{margin-bottom:18px}
-.fld:last-child{margin-bottom:0}
-.fld-label{font-size:11px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:7px;font-weight:700}
-.fld-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;color:var(--text);font-family:inherit;font-size:15px;outline:none;transition:border-color .2s;-webkit-appearance:none;appearance:none}
-.fld-input:focus{border-color:var(--accent)}
-.fld-input.mono{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500}
-select.fld-input{cursor:pointer}
-select.fld-input option{background:var(--surface)}
-
-.type-tog{display:flex;background:var(--surface2);border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--border)}
-.type-btn{flex:1;padding:12px;border:none;background:none;color:var(--text3);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.03em}
-.type-btn.on-minus{background:var(--minus-bg);color:var(--minus)}
-.type-btn.on-plus{background:var(--plus-bg);color:var(--plus)}
-
-.chk-row{display:flex;align-items:center;gap:12px;padding:13px 14px;background:var(--surface2);border-radius:var(--r-sm);border:1px solid var(--border);cursor:pointer;transition:border-color .2s}
-.chk-row.on{border-color:var(--accent)}
-.chk-box{width:20px;height:20px;border-radius:6px;border:2px solid var(--text3);background:transparent;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
-.chk-row.on .chk-box{background:var(--accent);border-color:var(--accent)}
-.chk-box svg{display:none}
-.chk-row.on .chk-box svg{display:block}
-.chk-title{font-size:13px;font-weight:700}
-.chk-sub{font-size:11px;color:var(--text3);margin-top:2px;line-height:1.5}
-
-.adv-detail{margin-top:8px;background:var(--warn-bg);border:1px solid rgba(251,191,36,0.2);border-radius:var(--r-sm);padding:14px;display:none}
-.adv-detail.vis{display:block}
-.adv-detail-label{font-size:11px;letter-spacing:.06em;color:var(--warn);margin-bottom:8px;font-weight:700}
-.adv-inp{width:100%;background:var(--surface);border:1px solid rgba(251,191,36,0.25);border-radius:var(--r-sm);padding:11px 14px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:20px;outline:none;-webkit-appearance:none}
-.adv-inp:focus{border-color:var(--warn)}
-.adv-hint{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.7}
-
-.submit-btn{margin:20px 16px 0;width:calc(100% - 32px);background:var(--accent);border:none;border-radius:var(--r-sm);padding:16px;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.04em;transition:all .15s;position:relative;overflow:hidden}
-.submit-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.1));pointer-events:none}
-.submit-btn:active{opacity:.85;transform:scale(.97)}
-
-/* ========== STATS ========== */
-.stats-tabs{display:flex;gap:8px;padding:0 16px 14px}
-.stab{flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);color:var(--text3);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.03em}
-.stab.active{background:rgba(109,92,255,0.12);border-color:var(--accent);color:var(--accent-l)}
-
-.stats-sec{padding:0 16px 16px}
-.stats-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
-.stats-card-title{padding:14px 16px;font-size:11px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:700}
-.st-row{display:flex;align-items:center;padding:12px 16px;gap:10px;border-bottom:1px solid var(--border)}
-.st-row:last-child{border-bottom:none}
-.st-ico{font-size:16px;width:26px;text-align:center;flex-shrink:0}
-.st-name{flex:1;font-size:13px;font-weight:500}
-.st-pct{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text3);width:36px;text-align:right;flex-shrink:0}
-.st-bar-w{width:60px;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;flex-shrink:0}
-.st-bar{height:100%;background:var(--accent);border-radius:2px;transition:width .4s ease}
-.st-bar.inc{background:var(--plus)}
-.st-amt{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text2);min-width:72px;text-align:right}
-
-/* Donut chart */
-.donut-wrap{display:flex;align-items:center;justify-content:center;padding:24px 16px 8px;gap:20px}
-.donut-svg{width:140px;height:140px;transform:rotate(-90deg)}
-.donut-legend{display:flex;flex-direction:column;gap:6px;max-width:160px}
-.donut-leg-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)}
-.donut-leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.donut-center{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;fill:var(--text)}
-
-/* ========== SETTINGS ========== */
-.set-sec{padding:0 16px 16px}
-.set-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
-.set-card-title{padding:14px 16px;font-size:11px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:700}
-.set-item{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px}
-.set-item:last-child{border-bottom:none}
-.set-item-ico{font-size:16px;width:26px;text-align:center;flex-shrink:0}
-.set-item-name{flex:1;font-size:13px}
-.set-item-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:6px 8px;border-radius:6px;flex-shrink:0;transition:all .15s}
-.set-item-del:active{color:var(--minus);background:var(--minus-bg)}
-.add-row{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)}
-.add-row-inp{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none;transition:border-color .2s}
-.add-row-inp:focus{border-color:var(--accent)}
-.add-row-btn{background:var(--accent);border:none;border-radius:var(--r-sm);padding:10px 14px;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;transition:opacity .15s}
-.add-row-btn:active{opacity:.7}
-
-/* Recurring */
-.rec-li{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px}
-.rec-li:last-child{border-bottom:none}
-.rec-li-ico{font-size:16px;width:26px;text-align:center;flex-shrink:0}
-.rec-li-info{flex:1;min-width:0}
-.rec-li-name{font-size:13px;font-weight:700}
-.rec-li-meta{font-size:11px;color:var(--text3);margin-top:2px}
-.rec-li-amt{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--minus);flex-shrink:0}
-.rec-li-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:6px 8px;border-radius:6px;flex-shrink:0}
-.rec-li-del:active{color:var(--minus)}
-
-/* Delete section */
-.del-row{padding:14px 16px;border-bottom:1px solid var(--border)}
-.del-label{font-size:13px;margin-bottom:10px;font-weight:500}
-.del-ctrls{display:flex;gap:8px}
-.del-select{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none;-webkit-appearance:none;cursor:pointer}
-.del-select option{background:var(--surface)}
-.del-btn{background:var(--minus-bg);border:1px solid rgba(251,113,133,0.25);border-radius:var(--r-sm);padding:10px 14px;color:var(--minus);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;transition:background .15s}
-.del-btn:active{background:rgba(251,113,133,0.2)}
-.del-all-row{padding:14px 16px;display:flex;align-items:center;gap:12px}
-.del-all-info{flex:1}
-.del-all-label{font-size:13px;font-weight:500}
-.del-all-sub{font-size:11px;color:var(--text3);margin-top:2px}
-
-/* ========== MODAL ========== */
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:300;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
-.modal-bg.open{opacity:1;pointer-events:all}
-.modal-sheet{width:100%;max-width:520px;max-height:90vh;max-height:90dvh;overflow-y:auto;background:var(--surface);border-radius:var(--r) var(--r) 0 0;padding:0 0 env(safe-area-inset-bottom);transform:translateY(30px);transition:transform .25s}
-.modal-bg.open .modal-sheet{transform:translateY(0)}
-.modal-handle{width:36px;height:4px;background:var(--border-l);border-radius:2px;margin:12px auto 0}
-.modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 12px;border-bottom:1px solid var(--border)}
-.modal-title{font-size:15px;font-weight:700}
-.modal-close{background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:6px 8px;border-radius:6px}
-.modal-close:active{color:var(--text)}
-.modal-body{padding:18px;display:flex;flex-direction:column;gap:16px}
-.modal-lbl{font-size:11px;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:6px;font-weight:700}
-.modal-inp{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:11px 14px;color:var(--text);font-family:inherit;font-size:14px;outline:none;transition:border-color .2s;-webkit-appearance:none}
-.modal-inp:focus{border-color:var(--accent)}
-.modal-inp.mono{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:500}
-select.modal-inp{cursor:pointer}
-select.modal-inp option{background:var(--surface)}
-.modal-type-tog{display:flex;background:var(--surface2);border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--border)}
-.modal-type-btn{flex:1;padding:10px;border:none;background:none;color:var(--text3);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s}
-.modal-type-btn.on-minus{background:var(--minus-bg);color:var(--minus)}
-.modal-type-btn.on-plus{background:var(--plus-bg);color:var(--plus)}
-.modal-chk-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--r-sm);border:1px solid var(--border);cursor:pointer;transition:border-color .2s}
-.modal-chk-row.on{border-color:var(--accent)}
-.modal-chk-box{width:20px;height:20px;border-radius:6px;border:2px solid var(--text3);background:transparent;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
-.modal-chk-row.on .modal-chk-box{background:var(--accent);border-color:var(--accent)}
-.modal-chk-box svg{display:none}
-.modal-chk-row.on .modal-chk-box svg{display:block}
-.modal-adv-detail{margin-top:6px;background:var(--warn-bg);border:1px solid rgba(251,191,36,0.2);border-radius:var(--r-sm);padding:12px 14px;display:none}
-.modal-adv-detail.vis{display:block}
-.modal-adv-label{font-size:11px;color:var(--warn);margin-bottom:6px;font-weight:700}
-.modal-adv-inp{width:100%;background:var(--surface);border:1px solid rgba(251,191,36,0.25);border-radius:var(--r-sm);padding:10px 14px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:18px;outline:none;-webkit-appearance:none}
-.modal-adv-inp:focus{border-color:var(--warn)}
-.modal-foot{display:flex;gap:10px;padding:0 18px 18px}
-.modal-save{flex:1;background:var(--accent);border:none;border-radius:var(--r-sm);padding:14px;color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s}
-.modal-save:active{opacity:.85}
-.modal-del{background:var(--minus-bg);border:1px solid rgba(251,113,133,0.25);border-radius:var(--r-sm);padding:14px 16px;color:var(--minus);font-family:inherit;font-size:14px;cursor:pointer;transition:background .15s}
-.modal-del:active{background:rgba(251,113,133,0.2)}
-
-/* ========== TOAST ========== */
-.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:10px 20px;font-size:13px;color:var(--text);opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;z-index:200;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-
-/* ========== EXPORT ========== */
-/* Emoji Picker */
-.emoji-picker{border-top:1px solid var(--border);padding:14px}
-.emoji-picker-label{font-size:11px;letter-spacing:.08em;color:var(--text3);margin-bottom:10px;font-weight:700;display:flex;align-items:center;justify-content:space-between}
-.emoji-cat-tabs{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
-.emoji-cat-tabs::-webkit-scrollbar{display:none}
-.emoji-cat-tab{flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;transition:all .15s;color:var(--text3)}
-.emoji-cat-tab.active{background:rgba(109,92,255,0.12);border-color:var(--accent);color:var(--accent-l)}
-.emoji-cat-tab:active{transform:scale(.93)}
-.emoji-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:12px;max-height:180px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
-.emoji-grid::-webkit-scrollbar{width:4px}
-.emoji-grid::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.emoji-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:22px;border-radius:10px;cursor:pointer;transition:all .12s;background:transparent;border:2px solid transparent;user-select:none;-webkit-user-select:none}
-.emoji-cell:active{transform:scale(.85)}
-.emoji-cell.selected{background:rgba(109,92,255,0.15);border-color:var(--accent);box-shadow:0 0 12px var(--accent-glow)}
-.emoji-selected-preview{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:12px}
-.emoji-selected-preview.has-emoji{border-color:var(--accent)}
-.emoji-preview-icon{font-size:28px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:var(--surface3);border-radius:10px;flex-shrink:0}
-.emoji-preview-icon.empty{font-size:14px;color:var(--text3)}
-.emoji-genre-input{flex:1;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;outline:none;padding:4px 0}
-.emoji-genre-input::placeholder{color:var(--text3)}
-.emoji-add-btn{width:100%;background:var(--accent);border:none;border-radius:var(--r-sm);padding:12px;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:.03em}
-.emoji-add-btn:active{opacity:.7;transform:scale(.97)}
-.emoji-add-btn:disabled{opacity:.4;cursor:default;transform:none}
-
-.export-btn{display:flex;align-items:center;gap:8px;padding:13px 16px;color:var(--accent-l);font-size:13px;font-weight:700;cursor:pointer;transition:background .15s;border-bottom:1px solid var(--border)}
-.export-btn:active{background:var(--surface2)}
-</style>
-</head>
-<body>
-
-<!-- ====== HOME ====== -->
-<div id="page-home" class="page active">
-  <div class="header">
-    <div class="header-sub">かけいぼ</div>
-    <div class="header-title">収支サマリー</div>
-  </div>
-  <div class="month-sel">
-    <div class="month-nav" onclick="chgMonth(-1)">‹</div>
-    <div class="month-label" id="ml-home">—</div>
-    <div class="month-nav" onclick="chgMonth(1)">›</div>
-    <button class="month-today" onclick="goToday()">今月</button>
-  </div>
-  <div class="bal-card">
-    <div class="bal-label">実質支出（自分の分だけ）</div>
-    <div class="bal-amount is-zero" id="h-bal">¥0</div>
-    <div class="bal-row">
-      <div class="bal-item"><div class="bal-item-label">実費支出</div><div class="bal-item-val" id="h-out">¥0</div></div>
-      <div class="bal-item"><div class="bal-item-label">収入</div><div class="bal-item-val" id="h-in">¥0</div></div>
-      <div class="bal-item"><div class="bal-item-label">立替中</div><div class="bal-item-val" id="h-adv">¥0</div></div>
-    </div>
-  </div>
-  <div class="chips" id="h-chips"></div>
-  <button class="add-btn-main" onclick="goInput()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    記録を追加
-  </button>
-  <div class="sec-title">記録一覧 <span class="sec-count" id="h-count"></span></div>
-  <div class="rec-list" id="rec-list"></div>
-</div>
-
-<!-- ====== INPUT ====== -->
-<div id="page-input" class="page">
-  <div class="header">
-    <div class="header-sub">かけいぼ</div>
-    <div class="header-title">記録を追加</div>
-  </div>
-  <div class="inp-card">
-    <div class="fld">
-      <div class="fld-label">種別</div>
-      <div class="type-tog">
-        <button class="type-btn on-minus" id="t-minus" onclick="setType('minus')">💸 支出</button>
-        <button class="type-btn" id="t-plus" onclick="setType('plus')">💰 収入</button>
-      </div>
-    </div>
-    <div class="fld">
-      <div class="fld-label">金額</div>
-      <input class="fld-input mono" id="i-amt" type="number" inputmode="numeric" placeholder="0" min="0">
-    </div>
-    <div class="fld">
-      <div class="fld-label">日付</div>
-      <input class="fld-input" id="i-date" type="date">
-    </div>
-    <div class="fld">
-      <div class="fld-label" id="i-meth-label">支払い方法</div>
-      <select class="fld-input" id="i-meth"><option value="">選択してください</option></select>
-    </div>
-    <div class="fld">
-      <div class="fld-label">ジャンル</div>
-      <select class="fld-input" id="i-genre"><option value="">選択してください</option></select>
-    </div>
-    <div id="fld-adv" class="fld">
-      <div class="fld-label">立替オプション</div>
-      <div class="chk-row" id="chk-adv" onclick="togChk('advance')">
-        <div class="chk-box"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg></div>
-        <div><div class="chk-title">まとめて支払い（立替）</div><div class="chk-sub">複数人分を立て替えた。自分の分だけ総額に反映。</div></div>
-      </div>
-      <div class="adv-detail" id="adv-detail">
-        <div class="adv-detail-label">💡 自分の負担額</div>
-        <input class="adv-inp" id="i-self" type="number" inputmode="numeric" placeholder="0" min="0">
-        <div class="adv-hint">ここに入力した金額だけが総支出に反映されます。<br>空欄 = 自分の負担¥0（全額他人の立替）</div>
-      </div>
-    </div>
-    <div id="fld-ref" class="fld" style="display:none">
-      <div class="fld-label">返金オプション</div>
-      <div class="chk-row" id="chk-ref" onclick="togChk('refund')">
-        <div class="chk-box"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg></div>
-        <div><div class="chk-title">立替の返金</div><div class="chk-sub">立替分が戻ってきた。総支出には影響なし。</div></div>
-      </div>
-    </div>
-    <div class="fld">
-      <div class="fld-label">メモ（任意）</div>
-      <input class="fld-input" id="i-memo" type="text" placeholder="例：ランチ代">
-    </div>
-  </div>
-  <button class="submit-btn" onclick="addRec()">記録する</button>
-</div>
-
-<!-- ====== STATS ====== -->
-<div id="page-stats" class="page">
-  <div class="header">
-    <div class="header-sub">かけいぼ</div>
-    <div class="header-title">内訳</div>
-  </div>
-  <div class="month-sel">
-    <div class="month-nav" onclick="chgMonth(-1)">‹</div>
-    <div class="month-label" id="ml-stats">—</div>
-    <div class="month-nav" onclick="chgMonth(1)">›</div>
-    <button class="month-today" onclick="goToday()">今月</button>
-  </div>
-  <div class="stats-tabs">
-    <button class="stab active" id="stab-out" onclick="setStab('out')">💸 支出</button>
-    <button class="stab" id="stab-in" onclick="setStab('in')">💰 収入</button>
-  </div>
-  <div id="donut-area"></div>
-  <div class="stats-sec" id="stats-sec"></div>
-</div>
-
-<!-- ====== SETTINGS ====== -->
-<div id="page-settings" class="page">
-  <div class="header">
-    <div class="header-sub">かけいぼ</div>
-    <div class="header-title">設定</div>
-  </div>
-  <div class="set-sec">
-    <div class="set-card">
-      <div class="set-card-title">💳 支払い / 入金方法</div>
-      <div id="s-meth-list"></div>
-      <div class="add-row">
-        <input class="add-row-inp" id="s-new-meth" type="text" placeholder="例：Suica、楽天ペイ…" maxlength="20">
-        <button class="add-row-btn" onclick="addOpt('method')">追加</button>
-      </div>
-    </div>
-    <div class="set-card">
-      <div class="set-card-title">🗂️ ジャンル</div>
-      <div id="s-genre-list"></div>
-      <div class="emoji-picker" id="emoji-picker">
-        <div class="emoji-picker-label">アイコンを選択</div>
-        <div class="emoji-cat-tabs" id="emoji-cat-tabs"></div>
-        <div class="emoji-grid" id="emoji-grid"></div>
-        <div class="emoji-selected-preview" id="emoji-preview">
-          <div class="emoji-preview-icon empty" id="emoji-preview-icon">？</div>
-          <input class="emoji-genre-input" id="s-new-genre" type="text" placeholder="ジャンル名を入力…" maxlength="20">
-        </div>
-        <button class="emoji-add-btn" id="emoji-add-btn" onclick="addGenreWithEmoji()">追加</button>
-      </div>
-    </div>
-    <div class="set-card">
-      <div class="set-card-title">🔁 繰り返し支払い</div>
-      <div id="s-rec-list"></div>
-      <div class="add-row" style="flex-direction:column;gap:10px">
-        <div style="display:flex;gap:8px">
-          <input class="add-row-inp" id="rc-name" type="text" placeholder="名前（例：家賃）" maxlength="20" style="flex:2">
-          <input class="add-row-inp" id="rc-amt" type="number" inputmode="numeric" placeholder="金額" style="flex:1;font-family:'IBM Plex Mono',monospace">
-        </div>
-        <div style="display:flex;gap:8px">
-          <select class="add-row-inp" id="rc-meth" style="flex:1"></select>
-          <select class="add-row-inp" id="rc-genre" style="flex:1"></select>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select class="add-row-inp" id="rc-freq" style="flex:1" onchange="updRecUI()">
-            <option value="monthly">毎月</option><option value="weekly">毎週</option><option value="daily">毎日</option>
-          </select>
-          <select class="add-row-inp" id="rc-day-m" style="flex:1"></select>
-          <select class="add-row-inp" id="rc-day-w" style="flex:1;display:none">
-            <option value="0">日曜</option><option value="1">月曜</option><option value="2">火曜</option>
-            <option value="3">水曜</option><option value="4">木曜</option><option value="5">金曜</option><option value="6">土曜</option>
-          </select>
-        </div>
-        <button class="add-row-btn" style="width:100%" onclick="addRecurring()">繰り返し支払いを追加</button>
-      </div>
-    </div>
-    <div class="set-card">
-      <div class="set-card-title">📤 データ管理</div>
-      <div class="export-btn" onclick="exportCSV()">📥 CSVエクスポート</div>
-      <div class="del-row">
-        <div class="del-label">月を選んで削除</div>
-        <div class="del-ctrls">
-          <select class="del-select" id="del-m-sel"><option value="">月を選択…</option></select>
-          <button class="del-btn" onclick="delMonth()">削除</button>
-        </div>
-      </div>
-      <div class="del-all-row">
-        <div class="del-all-info"><div class="del-all-label">全データを削除</div><div class="del-all-sub">すべての記録を消去します</div></div>
-        <button class="del-btn" onclick="delAll()">全削除</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ====== EDIT MODAL ====== -->
-<div class="modal-bg" id="edit-modal" onclick="if(event.target===this)closeModal()">
-  <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-hdr">
-      <div class="modal-title">記録を編集</div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div><div class="modal-lbl">種別</div>
-        <div class="modal-type-tog">
-          <button class="modal-type-btn on-minus" id="mt-minus" onclick="setMType('minus')">💸 支出</button>
-          <button class="modal-type-btn" id="mt-plus" onclick="setMType('plus')">💰 収入</button>
-        </div>
-      </div>
-      <div><div class="modal-lbl">金額</div><input class="modal-inp mono" id="m-amt" type="number" inputmode="numeric" placeholder="0" min="0"></div>
-      <div><div class="modal-lbl">日付</div><input class="modal-inp" id="m-date" type="date"></div>
-      <div><div class="modal-lbl" id="m-meth-label">支払い方法</div><select class="modal-inp" id="m-meth"><option value="">選択</option></select></div>
-      <div><div class="modal-lbl">ジャンル</div><select class="modal-inp" id="m-genre"><option value="">選択</option></select></div>
-      <div id="m-fld-adv">
-        <div class="modal-lbl">立替オプション</div>
-        <div class="modal-chk-row" id="m-chk-adv" onclick="togMChk('advance')">
-          <div class="modal-chk-box"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg></div>
-          <div><div style="font-size:13px;font-weight:700">まとめて支払い（立替）</div><div style="font-size:11px;color:var(--text3);margin-top:2px">自分の分だけ総額に反映</div></div>
-        </div>
-        <div class="modal-adv-detail" id="m-adv-det">
-          <div class="modal-adv-label">💡 自分の負担額</div>
-          <input class="modal-adv-inp" id="m-self" type="number" inputmode="numeric" placeholder="0" min="0">
-        </div>
-      </div>
-      <div id="m-fld-ref" style="display:none">
-        <div class="modal-lbl">返金オプション</div>
-        <div class="modal-chk-row" id="m-chk-ref" onclick="togMChk('refund')">
-          <div class="modal-chk-box"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.5" width="12" height="12"><polyline points="2,6 5,9 10,3"/></svg></div>
-          <div><div style="font-size:13px;font-weight:700">立替の返金</div><div style="font-size:11px;color:var(--text3);margin-top:2px">総支出に影響なし</div></div>
-        </div>
-      </div>
-      <div><div class="modal-lbl">メモ（任意）</div><input class="modal-inp" id="m-memo" type="text" placeholder="例：ランチ代"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="modal-del" onclick="delFromModal()">🗑 削除</button>
-      <button class="modal-save" onclick="saveEdit()">保存する</button>
-    </div>
-  </div>
-</div>
-
-<!-- ====== TAB BAR ====== -->
-<div class="tab-bar">
-  <button class="tab-btn active" id="tab-home" onclick="switchTab('home')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>ホーム
-  </button>
-  <button class="tab-btn" id="tab-input" onclick="switchTab('input')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>追加
-  </button>
-  <button class="tab-btn" id="tab-stats" onclick="switchTab('stats')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>内訳
-  </button>
-  <button class="tab-btn" id="tab-settings" onclick="switchTab('settings')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>設定
-  </button>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-// ========== STATE ==========
-let records = JSON.parse(localStorage.getItem('kb_records') || '[]');
-let curMonth = new Date();
-let curType = 'minus';
-let chkSt = { advance: false, refund: false };
-let stabMode = 'out';
-
-const DEF_METHS = ['現金','クレジットカード','デビットカード','PayPay','交通系IC','銀行振込','給料','その他'];
-const DEF_GENRES = ['🍽️ 外食','☕ カフェ','🛒 食材','🏥 病院','💊 薬局','🚃 交通','🛍️ ショッピング','🎮 娯楽','📚 書籍','🏠 家賃/光熱費','💰 収入','📦 その他'];
-let meths = JSON.parse(localStorage.getItem('kb_meths') || 'null') || [...DEF_METHS];
-let genres = JSON.parse(localStorage.getItem('kb_genres') || 'null') || [...DEF_GENRES];
-let recList = JSON.parse(localStorage.getItem('kb_recurring') || '[]');
-
-const saveRecs = () => localStorage.setItem('kb_records', JSON.stringify(records));
-const saveMeths = () => localStorage.setItem('kb_meths', JSON.stringify(meths));
-const saveGenres = () => localStorage.setItem('kb_genres', JSON.stringify(genres));
-const saveRecurring = () => localStorage.setItem('kb_recurring', JSON.stringify(recList));
-
-// ========== HELPERS ==========
-const fmt = n => '¥' + Math.abs(n).toLocaleString('ja-JP');
-const ymKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-const ymLbl = d => `${d.getFullYear()}年${d.getMonth()+1}月`;
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-const monthRecs = () => records.filter(r => r.ym === ymKey(curMonth));
-
-const DONUT_COLORS = ['#6d5cff','#c084fc','#f472b6','#fb923c','#fbbf24','#34d399','#22d3ee','#818cf8','#a78bfa','#e879f9'];
-
-function calcStats(recs) {
-  let realOut=0, totalAdv=0, totalIn=0, totalRef=0;
-  for (const r of recs) {
-    if (r.type==='plus') { r.isRefund ? totalRef+=r.amount : totalIn+=r.amount; continue; }
-    if (r.isAdvance) { const s=(r.selfAmount!=null&&r.selfAmount>=0)?r.selfAmount:0; realOut+=s; totalAdv+=r.amount-s; }
-    else realOut+=r.amount;
-  }
-  return { realOut, totalAdv, totalIn, totalRef, net: realOut-totalIn };
-}
-
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2200);
-}
-
-// ========== DROPDOWNS ==========
-function popDrops() {
-  const ms = document.getElementById('i-meth'), gs = document.getElementById('i-genre');
-  const mv = ms.value, gv = gs.value;
-  ms.innerHTML = '<option value="">選択してください</option>' + meths.map(m=>`<option value="${m}">${m}</option>`).join('');
-  gs.innerHTML = '<option value="">選択してください</option>' + genres.map(g=>`<option value="${g}">${g}</option>`).join('');
-  if (mv) ms.value = mv; if (gv) gs.value = gv;
-}
-
-// ========== TABS ==========
-function switchTab(tab) {
-  ['home','input','stats','settings'].forEach(t => {
-    document.getElementById('page-'+t).classList.toggle('active', t===tab);
-    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
-  });
-  if (tab==='home') renderHome();
-  if (tab==='input') { popDrops(); document.getElementById('i-date').value = new Date().toISOString().slice(0,10); }
-  if (tab==='stats') renderStats();
-  if (tab==='settings') renderSettings();
-}
-function goInput() { switchTab('input'); }
-function goToday() { curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); renderHome(); renderStats(); }
-function chgMonth(dir) { curMonth = new Date(curMonth.getFullYear(), curMonth.getMonth()+dir, 1); renderHome(); renderStats(); }
-
-// ========== TYPE TOGGLE ==========
-function setType(t) {
-  curType = t;
-  document.getElementById('t-minus').className = 'type-btn'+(t==='minus'?' on-minus':'');
-  document.getElementById('t-plus').className  = 'type-btn'+(t==='plus' ?' on-plus' :'');
-  document.getElementById('i-meth-label').textContent = t==='plus'?'入金方法':'支払い方法';
-  document.getElementById('fld-adv').style.display = t==='minus'?'':'none';
-  document.getElementById('fld-ref').style.display  = t==='plus' ?'':'none';
-  if (t==='plus')  { chkSt.advance=false; document.getElementById('adv-detail').classList.remove('vis'); document.getElementById('i-self').value=''; }
-  if (t==='minus') chkSt.refund=false;
-  updChks();
-}
-function togChk(key) {
-  chkSt[key] = !chkSt[key]; updChks();
-  if (key==='advance') { document.getElementById('adv-detail').classList.toggle('vis', chkSt.advance); if (!chkSt.advance) document.getElementById('i-self').value=''; }
-}
-function updChks() {
-  ['advance','refund'].forEach(k => { const e=document.getElementById('chk-'+(k==='advance'?'adv':'ref')); if(e) e.className='chk-row'+(chkSt[k]?' on':''); });
-}
-
-// ========== ADD RECORD ==========
-function addRec() {
-  const amount = parseFloat(document.getElementById('i-amt').value);
-  const method = document.getElementById('i-meth').value;
-  const genre  = document.getElementById('i-genre').value;
-  const memo   = document.getElementById('i-memo').value.trim();
-  const dateVal= document.getElementById('i-date').value;
-  if (!amount||amount<=0) { toast('⚠️ 金額を入力してください'); return; }
-  if (!method) { toast('⚠️ 支払い/入金方法を選択してください'); return; }
-  if (!genre)  { toast('⚠️ ジャンルを選択してください'); return; }
-
-  let selfAmount = null;
-  if (curType==='minus' && chkSt.advance) {
-    const sv = parseFloat(document.getElementById('i-self').value);
-    selfAmount = (!isNaN(sv)&&sv>=0)?sv:0;
-    if (selfAmount>amount) { toast('⚠️ 自分の負担額が合計を超えています'); return; }
-  }
-
-  const d = dateVal ? new Date(dateVal+'T09:00:00') : new Date();
-  records.push({
-    id: uid(), type: curType, amount, selfAmount, method, genre, memo,
-    isAdvance: curType==='minus'&&chkSt.advance,
-    isRefund:  curType==='plus' &&chkSt.refund,
-    ym: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,
-    date: d.toISOString(),
-  });
-  saveRecs();
-  document.getElementById('i-amt').value='';
-  document.getElementById('i-meth').value='';
-  document.getElementById('i-genre').value='';
-  document.getElementById('i-memo').value='';
-  document.getElementById('i-self').value='';
-  document.getElementById('adv-detail').classList.remove('vis');
-  chkSt={advance:false,refund:false}; updChks(); setType('minus');
-  toast('✅ 記録しました');
-  curMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-  setTimeout(()=>switchTab('home'), 500);
-}
-
-// ========== RENDER HOME ==========
-function renderHome() {
-  const recs = monthRecs();
-  const { realOut, totalAdv, totalIn, totalRef, net } = calcStats(recs);
-  document.getElementById('ml-home').textContent = ymLbl(curMonth);
-
-  const el = document.getElementById('h-bal');
-  el.textContent = (net>=0?'-':'+')+fmt(Math.abs(net));
-  el.className = 'bal-amount '+(net>0?'is-minus':net<0?'is-plus':'is-zero');
-
-  document.getElementById('h-out').textContent = fmt(realOut);
-  document.getElementById('h-in').textContent  = fmt(totalIn+totalRef);
-  document.getElementById('h-adv').textContent = fmt(Math.max(0,totalAdv));
-
-  // Chips
-  const gm = {};
-  for (const r of recs) {
-    if (r.type!=='minus') continue;
-    const v = r.isAdvance?((r.selfAmount!=null)?r.selfAmount:0):r.amount;
-    if (v>0) gm[r.genre]=(gm[r.genre]||0)+v;
-  }
-  document.getElementById('h-chips').innerHTML = Object.entries(gm).sort((a,b)=>b[1]-a[1]).slice(0,5)
-    .map(([g,v])=>`<div class="chip">${g} <b>${fmt(v)}</b></div>`).join('');
-
-  document.getElementById('h-count').textContent = recs.length ? `${recs.length}件` : '';
-
-  // List
-  const list = document.getElementById('rec-list');
-  const sorted = [...recs].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  if (!sorted.length) { list.innerHTML='<div class="empty"><div class="empty-ico">📭</div>まだ記録がありません<br>「＋ 記録を追加」で始めましょう</div>'; return; }
-
-  list.innerHTML = sorted.map((r,i) => {
-    const isP = r.type==='plus';
-    const icon = r.genre ? r.genre.split(' ')[0] : (isP?'💰':'💸');
-    const genreT = r.genre||(isP?'収入':'支出');
-    const dispA = r.isAdvance?((r.selfAmount!=null)?r.selfAmount:0):r.amount;
-    const amtS = (isP?'+':'-')+fmt(dispA);
-    let badges = '';
-    if (r.isAdvance) badges+=`<span class="badge badge-adv">立替 計${fmt(r.amount)}</span>`;
-    if (r.isRefund)  badges+='<span class="badge badge-ref">返金</span>';
-    const memoT = r.memo?' · '+r.memo:'';
-    const dateT = r.date ? new Date(r.date).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'})+'日' : '';
-    return `<div class="rec-item" onclick="openModal('${r.id}')" style="animation-delay:${Math.min(i*30,300)}ms">
-      <div class="rec-icon">${icon}</div>
-      <div class="rec-info">
-        <div class="rec-name">${genreT}${memoT}</div>
-        <div class="rec-meta">${dateT} ${r.method||''}${badges}</div>
-      </div>
-      <div class="rec-amt ${isP?'is-plus':'is-minus'}">${amtS}</div>
-      <svg class="rec-edit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-    </div>`;
-  }).join('');
-}
-
-// ========== STATS ==========
-function setStab(t) {
-  stabMode=t;
-  document.getElementById('stab-out').classList.toggle('active', t==='out');
-  document.getElementById('stab-in').classList.toggle('active', t==='in');
-  renderStats();
-}
-
-function renderDonut(data, total) {
-  if (!data.length || total<=0) { document.getElementById('donut-area').innerHTML=''; return; }
-  const top = data.slice(0,8);
-  let cumPct = 0;
-  const segs = top.map((d,i) => {
-    const pct = d[1]/total*100;
-    const dashLen = pct*3.14159*2*54/100;
-    const gap = 3.14159*2*54 - dashLen;
-    const offset = -cumPct*3.14159*2*54/100;
-    cumPct += pct;
-    return `<circle cx="70" cy="70" r="54" fill="none" stroke="${DONUT_COLORS[i%DONUT_COLORS.length]}" stroke-width="14" stroke-dasharray="${dashLen} ${gap}" stroke-dashoffset="${offset}" stroke-linecap="round" opacity=".9"/>`;
-  });
-  const legend = top.map((d,i) => {
-    const pct = (d[1]/total*100).toFixed(0);
-    const icon = d[0].split(' ')[0];
-    return `<div class="donut-leg-item"><div class="donut-leg-dot" style="background:${DONUT_COLORS[i%DONUT_COLORS.length]}"></div>${icon} ${pct}%</div>`;
-  }).join('');
-
-  document.getElementById('donut-area').innerHTML = `<div class="donut-wrap">
-    <svg class="donut-svg" viewBox="0 0 140 140">${segs.join('')}
-      <text class="donut-center" x="70" y="74" text-anchor="middle" transform="rotate(90,70,70)">${fmt(total)}</text>
-    </svg>
-    <div class="donut-legend">${legend}</div>
-  </div>`;
-}
-
-function renderStats() {
-  document.getElementById('ml-stats').textContent = ymLbl(curMonth);
-  const recs = monthRecs();
-  const sec = document.getElementById('stats-sec');
-  if (!recs.length) { document.getElementById('donut-area').innerHTML=''; sec.innerHTML='<div class="empty"><div class="empty-ico">📊</div>データがありません</div>'; return; }
-
-  const buildRows = (map, max, isInc) => {
-    const total = Object.values(map).reduce((s,v)=>s+v,0);
-    return Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([name,val]) => {
-      const icon = name.split(' ')[0];
-      const pct = max>0?(val/max*100).toFixed(0):0;
-      const pctT = total>0?(val/total*100).toFixed(0)+'%':'';
-      return `<div class="st-row">
-        <div class="st-ico">${icon.length<=2?icon:'•'}</div>
-        <div class="st-name">${name}</div>
-        <div class="st-pct">${pctT}</div>
-        <div class="st-bar-w"><div class="st-bar${isInc?' inc':''}" style="width:${pct}%"></div></div>
-        <div class="st-amt">${isInc?'+':'-'}${fmt(val)}</div>
-      </div>`;
-    }).join('');
-  };
-
-  if (stabMode==='out') {
-    const methMap={}, genreMap={}; let maxM=0, maxG=0;
-    for (const r of recs) {
-      if (r.type!=='minus') continue;
-      const val = r.isAdvance?((r.selfAmount!=null)?r.selfAmount:0):r.amount;
-      if (val<=0) continue;
-      if (r.method) { methMap[r.method]=(methMap[r.method]||0)+val; maxM=Math.max(maxM,methMap[r.method]); }
-      if (r.genre) { genreMap[r.genre]=(genreMap[r.genre]||0)+val; maxG=Math.max(maxG,genreMap[r.genre]); }
-    }
-    const genreEntries = Object.entries(genreMap).sort((a,b)=>b[1]-a[1]);
-    const genreTotal = genreEntries.reduce((s,e)=>s+e[1],0);
-    renderDonut(genreEntries, genreTotal);
-    sec.innerHTML = `
-      <div class="stats-card"><div class="stats-card-title">🗂️ ジャンル別</div>${Object.keys(genreMap).length?buildRows(genreMap,maxG,false):'<div class="empty" style="padding:20px">データなし</div>'}</div>
-      <div class="stats-card"><div class="stats-card-title">💳 支払い方法別</div>${Object.keys(methMap).length?buildRows(methMap,maxM,false):'<div class="empty" style="padding:20px">データなし</div>'}</div>`;
-  } else {
-    const methMap={}, genreMap={}; let maxM=0, maxG=0;
-    for (const r of recs) {
-      if (r.type!=='plus') continue;
-      const gk = r.isRefund?'🔄 立替返金':(r.genre||'💰 収入');
-      if (r.method) { methMap[r.method]=(methMap[r.method]||0)+r.amount; maxM=Math.max(maxM,methMap[r.method]); }
-      genreMap[gk]=(genreMap[gk]||0)+r.amount; maxG=Math.max(maxG,genreMap[gk]);
-    }
-    const genreEntries = Object.entries(genreMap).sort((a,b)=>b[1]-a[1]);
-    const genreTotal = genreEntries.reduce((s,e)=>s+e[1],0);
-    renderDonut(genreEntries, genreTotal);
-    sec.innerHTML = `
-      <div class="stats-card"><div class="stats-card-title">🗂️ ジャンル別</div>${Object.keys(genreMap).length?buildRows(genreMap,maxG,true):'<div class="empty" style="padding:20px">データなし</div>'}</div>
-      <div class="stats-card"><div class="stats-card-title">💳 入金方法別</div>${Object.keys(methMap).length?buildRows(methMap,maxM,true):'<div class="empty" style="padding:20px">データなし</div>'}</div>`;
-  }
-}
-
-// ========== SETTINGS ==========
-function renderSettings() {
-  document.getElementById('s-meth-list').innerHTML = meths.map((m,i)=>
-    `<div class="set-item"><div class="set-item-ico">💳</div><div class="set-item-name">${m}</div><button class="set-item-del" onclick="remOpt('method',${i})">✕</button></div>`).join('');
-  document.getElementById('s-genre-list').innerHTML = genres.map((g,i)=>{
-    const ic=g.split(' ')[0];
-    return `<div class="set-item"><div class="set-item-ico">${ic}</div><div class="set-item-name">${g}</div><button class="set-item-del" onclick="remOpt('genre',${i})">✕</button></div>`;
-  }).join('');
-
-  const months=[...new Set(records.map(r=>r.ym))].sort().reverse();
-  const sel=document.getElementById('del-m-sel');
-  const pv=sel.value;
-  sel.innerHTML='<option value="">月を選択…</option>'+months.map(m=>{const[y,mo]=m.split('-');return`<option value="${m}">${y}年${parseInt(mo)}月</option>`;}).join('');
-  if(pv&&months.includes(pv))sel.value=pv;
-
-  renderRecList();
-  popRecDrops();
-}
-
-function addOpt(type) {
-  const id=type==='method'?'s-new-meth':'s-new-genre';
-  const val=document.getElementById(id).value.trim();
-  if(!val){toast('⚠️ 名前を入力してください');return;}
-  const list=type==='method'?meths:genres;
-  if(list.includes(val)){toast('⚠️ すでに存在します');return;}
-  list.push(val);
-  type==='method'?saveMeths():saveGenres();
-  document.getElementById(id).value='';
-  renderSettings();popDrops();toast('✅ 追加しました');
-}
-
-function remOpt(type,idx) {
-  const list=type==='method'?meths:genres;
-  if(!confirm(`「${list[idx]}」を削除しますか？`))return;
-  list.splice(idx,1);
-  type==='method'?saveMeths():saveGenres();
-  renderSettings();popDrops();toast('🗑 削除しました');
-}
-
-// ========== RECURRING ==========
-function initRecUI() {
-  const dm=document.getElementById('rc-day-m');
-  dm.innerHTML=Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}日</option>`).join('');
-  updRecUI();popRecDrops();
-}
-function popRecDrops() {
-  const m=document.getElementById('rc-meth'),g=document.getElementById('rc-genre');
-  m.innerHTML='<option value="">支払い方法</option>'+meths.map(x=>`<option value="${x}">${x}</option>`).join('');
-  g.innerHTML='<option value="">ジャンル</option>'+genres.map(x=>`<option value="${x}">${x}</option>`).join('');
-}
-function updRecUI() {
-  const f=document.getElementById('rc-freq').value;
-  document.getElementById('rc-day-m').style.display=f==='monthly'?'':'none';
-  document.getElementById('rc-day-w').style.display=f==='weekly'?'':'none';
-}
-function addRecurring() {
-  const name=document.getElementById('rc-name').value.trim();
-  const amount=parseFloat(document.getElementById('rc-amt').value);
-  const method=document.getElementById('rc-meth').value;
-  const genre=document.getElementById('rc-genre').value;
-  const freq=document.getElementById('rc-freq').value;
-  const dayM=parseInt(document.getElementById('rc-day-m').value);
-  const dayW=parseInt(document.getElementById('rc-day-w').value);
-  if(!name){toast('⚠️ 名前を入力');return;}
-  if(!amount||amount<=0){toast('⚠️ 金額を入力');return;}
-  if(!method){toast('⚠️ 支払い方法を選択');return;}
-  if(!genre){toast('⚠️ ジャンルを選択');return;}
-  recList.push({id:uid(),name,amount,method,genre,freq,dayOfMonth:freq==='monthly'?dayM:null,dayOfWeek:freq==='weekly'?dayW:null,lastApplied:null});
-  saveRecurring();
-  document.getElementById('rc-name').value='';document.getElementById('rc-amt').value='';
-  renderSettings();toast('✅ 繰り返し支払いを追加');
-}
-function remRecurring(id) {
-  const btn=document.querySelector(`.rec-li-del[data-id="${id}"]`);
-  if(btn&&btn.dataset.confirm!=='1'){btn.textContent='削除？';btn.dataset.confirm='1';setTimeout(()=>{if(btn){btn.textContent='✕';btn.dataset.confirm='0';}},3000);return;}
-  recList=recList.filter(r=>r.id!==id);saveRecurring();renderSettings();toast('🗑 削除しました');
-}
-function renderRecList() {
-  const el=document.getElementById('s-rec-list');
-  if(!recList.length){el.innerHTML='<div style="padding:16px;font-size:12px;color:var(--text3);text-align:center">登録なし</div>';return;}
-  const fl={monthly:'毎月',weekly:'毎週',daily:'毎日'};
-  const wl=['日','月','火','水','木','金','土'];
-  el.innerHTML=recList.map(r=>{
-    const ic=r.genre?r.genre.split(' ')[0]:'🔁';
-    let tm=fl[r.freq]||'';
-    if(r.freq==='monthly')tm+=`${r.dayOfMonth}日`;
-    if(r.freq==='weekly')tm+=`${wl[r.dayOfWeek]}曜`;
-    return `<div class="rec-li"><div class="rec-li-ico">${ic}</div><div class="rec-li-info"><div class="rec-li-name">${r.name}</div><div class="rec-li-meta">${tm} · ${r.method}</div></div><div class="rec-li-amt">-¥${r.amount.toLocaleString('ja-JP')}</div><button class="rec-li-del" data-id="${r.id}" onclick="remRecurring('${r.id}')">✕</button></div>`;
-  }).join('');
-}
-function applyRecurring() {
-  const today=new Date();today.setHours(0,0,0,0);let c=0;
-  recList.forEach(r=>{
-    const last=r.lastApplied?new Date(r.lastApplied):null;if(last)last.setHours(0,0,0,0);
-    const start=last?new Date(last.getTime()+864e5):new Date(today);
-    for(let d=new Date(start);d<=today;d=new Date(d.getTime()+864e5)){
-      let should=false;
-      if(r.freq==='daily')should=true;
-      else if(r.freq==='weekly')should=d.getDay()===r.dayOfWeek;
-      else if(r.freq==='monthly')should=d.getDate()===r.dayOfMonth;
-      if(should){
-        const ds=d.toISOString().slice(0,10);
-        if(!records.some(rec=>rec.recurringId===r.id&&rec.date.startsWith(ds))){
-          const yk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-          records.push({id:uid()+c,recurringId:r.id,type:'minus',amount:r.amount,selfAmount:null,method:r.method,genre:r.genre,memo:`🔁 ${r.name}`,isAdvance:false,isRefund:false,ym:yk,date:new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0,0).toISOString()});
-          c++;
-        }
-      }
-    }
-    r.lastApplied=today.toISOString();
-  });
-  if(c>0){saveRecs();saveRecurring();toast(`🔁 繰り返し ${c}件を自動追加`);}
-}
-
-// ========== DELETE ==========
-function delMonth() {
-  const sel=document.getElementById('del-m-sel').value;
-  if(!sel){toast('⚠️ 月を選択');return;}
-  const btn=document.querySelector('.del-row .del-btn');
-  if(btn.dataset.confirm!=='1'){const[y,mo]=sel.split('-');btn.textContent=`${parseInt(mo)}月を削除？`;btn.dataset.confirm='1';setTimeout(()=>{btn.textContent='削除';btn.dataset.confirm='0';},3000);return;}
-  records=records.filter(r=>r.ym!==sel);saveRecs();btn.textContent='削除';btn.dataset.confirm='0';renderSettings();renderHome();toast('🗑 削除しました');
-}
-function delAll() {
-  const btn=document.querySelector('.del-all-row .del-btn');
-  if(btn.dataset.confirm!=='1'){btn.textContent='本当に全削除？';btn.dataset.confirm='1';btn.style.background='rgba(251,113,133,0.2)';setTimeout(()=>{btn.textContent='全削除';btn.dataset.confirm='0';btn.style.background='';},3000);return;}
-  records=[];saveRecs();btn.textContent='全削除';btn.dataset.confirm='0';btn.style.background='';renderSettings();renderHome();toast('🗑 全データを削除しました');
-}
-
-// ========== CSV EXPORT ==========
-function exportCSV() {
-  if(!records.length){toast('⚠️ データがありません');return;}
-  const header='日付,種別,金額,自分負担額,支払方法,ジャンル,メモ,立替,返金\n';
-  const rows=records.map(r=>{
-    const d=r.date?new Date(r.date).toLocaleDateString('ja-JP'):'';
-    return `${d},${r.type==='plus'?'収入':'支出'},${r.amount},${r.selfAmount!=null?r.selfAmount:''},${r.method||''},${(r.genre||'').replace(/,/g,'')},${(r.memo||'').replace(/,/g,'')},${r.isAdvance?'○':''},${r.isRefund?'○':''}`;
-  }).join('\n');
-  const bom='\uFEFF';
-  const blob=new Blob([bom+header+rows],{type:'text/csv;charset=utf-8;'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`kakeibo_${ymKey(curMonth)}.csv`;a.click();
-  toast('📥 CSVをダウンロードしました');
-}
-
-// ========== EDIT MODAL ==========
-let editId=null, mChkSt={advance:false,refund:false};
-
-function openModal(id) {
-  const r=records.find(x=>x.id===id);if(!r)return;
-  editId=id; mChkSt={advance:!!r.isAdvance,refund:!!r.isRefund};
-  const ms=document.getElementById('m-meth'),gs=document.getElementById('m-genre');
-  ms.innerHTML='<option value="">選択</option>'+meths.map(m=>`<option value="${m}">${m}</option>`).join('');
-  gs.innerHTML='<option value="">選択</option>'+genres.map(g=>`<option value="${g}">${g}</option>`).join('');
-  setMType(r.type);
-  document.getElementById('m-amt').value=r.amount;
-  document.getElementById('m-date').value=r.date?r.date.slice(0,10):'';
-  ms.value=r.method||'';gs.value=r.genre||'';
-  document.getElementById('m-memo').value=r.memo||'';
-  if(r.isAdvance){document.getElementById('m-self').value=(r.selfAmount!=null)?r.selfAmount:'';document.getElementById('m-adv-det').classList.add('vis');}
-  else{document.getElementById('m-self').value='';document.getElementById('m-adv-det').classList.remove('vis');}
-  updMChks();
-  document.getElementById('edit-modal').classList.add('open');
-}
-function closeModal(){document.getElementById('edit-modal').classList.remove('open');editId=null;}
-
-function setMType(t) {
-  document.getElementById('mt-minus').className='modal-type-btn'+(t==='minus'?' on-minus':'');
-  document.getElementById('mt-plus').className='modal-type-btn'+(t==='plus'?' on-plus':'');
-  document.getElementById('m-meth-label').textContent=t==='plus'?'入金方法':'支払い方法';
-  document.getElementById('m-fld-adv').style.display=t==='minus'?'':'none';
-  document.getElementById('m-fld-ref').style.display=t==='plus'?'':'none';
-  if(t==='plus'){mChkSt.advance=false;document.getElementById('m-adv-det').classList.remove('vis');}
-  if(t==='minus')mChkSt.refund=false;
-  updMChks();
-  document.getElementById('edit-modal').dataset.type=t;
-}
-function togMChk(key){
-  mChkSt[key]=!mChkSt[key];updMChks();
-  if(key==='advance'){document.getElementById('m-adv-det').classList.toggle('vis',mChkSt.advance);if(!mChkSt.advance)document.getElementById('m-self').value='';}
-}
-function updMChks(){
-  ['advance','refund'].forEach(k=>{const e=document.getElementById('m-chk-'+(k==='advance'?'adv':'ref'));if(e)e.className='modal-chk-row'+(mChkSt[k]?' on':'');});
-}
-function saveEdit() {
-  const amount=parseFloat(document.getElementById('m-amt').value);
-  const method=document.getElementById('m-meth').value;
-  const genre=document.getElementById('m-genre').value;
-  const memo=document.getElementById('m-memo').value.trim();
-  const type=document.getElementById('edit-modal').dataset.type||'minus';
-  const dateVal=document.getElementById('m-date').value;
-  if(!amount||amount<=0){toast('⚠️ 金額を入力');return;}
-  if(!method){toast('⚠️ 支払い/入金方法を選択');return;}
-  if(!genre){toast('⚠️ ジャンルを選択');return;}
-  let selfAmount=null;
-  if(type==='minus'&&mChkSt.advance){const sv=parseFloat(document.getElementById('m-self').value);selfAmount=(!isNaN(sv)&&sv>=0)?sv:0;if(selfAmount>amount){toast('⚠️ 自分の負担額が合計を超えています');return;}}
-  const idx=records.findIndex(r=>r.id===editId);if(idx===-1)return;
-  const d=dateVal?new Date(dateVal+'T09:00:00'):new Date(records[idx].date);
-  records[idx]={...records[idx],type,amount,selfAmount,method,genre,memo,
-    isAdvance:type==='minus'&&mChkSt.advance,isRefund:type==='plus'&&mChkSt.refund,
-    ym:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,date:d.toISOString()};
-  saveRecs();closeModal();renderHome();toast('✅ 保存しました');
-}
-function delFromModal() {
-  if(!editId)return;
-  const btn=document.querySelector('.modal-del');
-  if(btn.dataset.confirm!=='1'){btn.textContent='本当に削除？';btn.dataset.confirm='1';btn.style.background='rgba(251,113,133,0.2)';setTimeout(()=>{btn.textContent='🗑 削除';btn.dataset.confirm='0';btn.style.background='';},3000);return;}
-  records=records.filter(r=>r.id!==editId);saveRecs();closeModal();renderHome();toast('🗑 削除しました');
-}
-
-// ========== EMOJI PICKER ==========
-const EMOJI_CATS = {
-  '暮らし': ['🏠','🏡','💡','🔌','🚿','🛁','🧹','🧺','🪑','🛋️','🛏️','🪴','🏢','🏫','🏥','🏦','📦','🗑️','🔑','🏘️'],
-  '食べ物': ['🍽️','🍚','🍜','🍣','🍱','🍙','🍛','🍲','🥗','🍕','🍔','🌮','☕','🍵','🍺','🧋','🛒','🥩','🥬','🍰'],
-  '移動':   ['🚃','🚗','🚕','🚌','🚲','🛵','✈️','🚄','🛤️','⛽','🅿️','🚏','🏍️','🛴','🚁','🛳️','🚢','🗺️','📍','🧳'],
-  '買い物': ['🛍️','👕','👟','👗','💄','💍','🕶️','👜','🎒','⌚','📱','💻','🖥️','🎧','📷','🪥','🧴','🧸','🎁','🛒'],
-  '娯楽':   ['🎮','🎬','🎵','🎤','📚','📖','🎨','🎭','🎪','🎯','🏋️','⚽','🎾','🏀','🎳','🎲','🃏','♟️','🧩','🏄'],
-  '医療':   ['🏥','💊','💉','🩺','🩹','🦷','👁️','🧠','❤️‍🩹','♿','🩻','🩸','🫀','🧬','⚕️','🌡️','😷','🤧','💪','🧘'],
-  'お金':   ['💰','💴','💵','💳','🏧','📈','📉','🧾','🏦','💸','🪙','💎','📊','🏷️','✅','📝','🔖','📋','🗂️','📁'],
-  '季節':   ['🌸','🎆','🎃','🎄','🎍','🎋','🎑','❄️','☀️','🌊','🍁','🌻','⛱️','🏖️','🗻','⛩️','🎎','🏮','🧧','🎌'],
-};
-let selectedEmoji = '';
-let currentEmojiCat = Object.keys(EMOJI_CATS)[0];
-
-function initEmojiPicker() {
-  renderEmojiCatTabs();
-  renderEmojiGrid();
-}
-
-function renderEmojiCatTabs() {
-  const el = document.getElementById('emoji-cat-tabs');
-  el.innerHTML = Object.keys(EMOJI_CATS).map(cat =>
-    `<div class="emoji-cat-tab${cat===currentEmojiCat?' active':''}" onclick="switchEmojiCat('${cat}')">${cat}</div>`
-  ).join('');
-}
-
-function switchEmojiCat(cat) {
-  currentEmojiCat = cat;
-  renderEmojiCatTabs();
-  renderEmojiGrid();
-}
-
-function renderEmojiGrid() {
-  const emojis = EMOJI_CATS[currentEmojiCat] || [];
-  document.getElementById('emoji-grid').innerHTML = emojis.map(e =>
-    `<div class="emoji-cell${e===selectedEmoji?' selected':''}" onclick="selectEmoji('${e}')">${e}</div>`
-  ).join('');
-}
-
-function selectEmoji(e) {
-  selectedEmoji = (selectedEmoji === e) ? '' : e;
-  renderEmojiGrid();
-  updateEmojiPreview();
-}
-
-function updateEmojiPreview() {
-  const iconEl = document.getElementById('emoji-preview-icon');
-  const previewEl = document.getElementById('emoji-preview');
-  if (selectedEmoji) {
-    iconEl.textContent = selectedEmoji;
-    iconEl.className = 'emoji-preview-icon';
-    previewEl.classList.add('has-emoji');
-  } else {
-    iconEl.textContent = '？';
-    iconEl.className = 'emoji-preview-icon empty';
-    previewEl.classList.remove('has-emoji');
-  }
-}
-
-function addGenreWithEmoji() {
-  const name = document.getElementById('s-new-genre').value.trim();
-  if (!name) { toast('⚠️ ジャンル名を入力してください'); return; }
-  const full = selectedEmoji ? `${selectedEmoji} ${name}` : name;
-  if (genres.includes(full)) { toast('⚠️ すでに存在します'); return; }
-  genres.push(full);
-  saveGenres();
-  document.getElementById('s-new-genre').value = '';
-  selectedEmoji = '';
-  updateEmojiPreview();
-  renderEmojiGrid();
-  renderSettings(); popDrops();
-  toast('✅ 追加しました');
-}
-
-// ========== SWIPE ==========
-let touchStartX=0;
-document.addEventListener('touchstart', e=>{touchStartX=e.touches[0].clientX;},{passive:true});
-document.addEventListener('touchend', e=>{
-  const diff=e.changedTouches[0].clientX-touchStartX;
-  if(Math.abs(diff)>80){
-    const page=document.querySelector('.page.active');
-    if(page&&(page.id==='page-home'||page.id==='page-stats')){
-      chgMonth(diff>0?-1:1);
-    }
-  }
-},{passive:true});
-
-// ========== DATA MIGRATION ==========
-// 旧バージョンのデータを自動移行
-(function migrateOldData() {
-  const old = localStorage.getItem('kakeibo_records');
-  if (old && !localStorage.getItem('kb_records')) {
-    localStorage.setItem('kb_records', old);
-    records = JSON.parse(old);
-  }
-  const oldM = localStorage.getItem('kakeibo_methods');
-  if (oldM && !localStorage.getItem('kb_meths')) {
-    localStorage.setItem('kb_meths', oldM);
-    meths = JSON.parse(oldM);
-  }
-  const oldG = localStorage.getItem('kakeibo_genres');
-  if (oldG && !localStorage.getItem('kb_genres')) {
-    localStorage.setItem('kb_genres', oldG);
-    genres = JSON.parse(oldG);
-  }
-  const oldR = localStorage.getItem('kakeibo_recurring');
-  if (oldR && !localStorage.getItem('kb_recurring')) {
-    localStorage.setItem('kb_recurring', oldR);
-    recList = JSON.parse(oldR);
-  }
-})();
-
-// ========== SERVICE WORKER (inline) ==========
-if ('serviceWorker' in navigator) {
-  const swCode = `
-    const CACHE='kb-v1';
-    const URLS=[self.location.href];
-    self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));self.skipWaiting();});
-    self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
-    self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>new Response('Offline',{status:503}))));});
-  `;
-  const blob = new Blob([swCode], { type: 'application/javascript' });
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
-}
-
-// ========== INIT ==========
-curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-document.getElementById('i-date').value = new Date().toISOString().slice(0,10);
-popDrops(); setType('minus'); initRecUI(); initEmojiPicker(); applyRecurring(); renderHome();
-</script>
-</body>
-</html>
+STATUSES = ["未着手", "実行中", "完了"]
+NEXT_ST  = {"未着手": "実行中", "実行中": "完了", "完了": "未着手"}
+STATUS_C = {"未着手": C["blue"], "実行中": C["orange"], "完了": C["green"]}
+
+QSS = f"""
+* {{ font-family:"Yu Gothic UI","Meiryo UI","MS UI Gothic",sans-serif; }}
+QMainWindow,QWidget {{ background:{C['bg']}; color:{C['text']}; font-size:13px; }}
+QTabWidget::pane {{ border:none; background:{C['bg']}; }}
+QTabBar::tab {{
+    background:{C['s2']}; color:{C['sub']};
+    border:1px solid {C['border']}; border-bottom:none;
+    padding:8px 20px; font-size:12px; font-family:"Courier New";
+    letter-spacing:1px; border-radius:6px 6px 0 0; margin-right:4px;
+}}
+QTabBar::tab:selected {{ background:{C['surface']}; color:{C['accent']}; border-color:{C['accent']}; }}
+QTabBar::tab:hover:!selected {{ color:{C['text']}; }}
+QScrollBar:vertical   {{ background:{C['surface']}; width:5px; border-radius:3px; margin:0; }}
+QScrollBar::handle:vertical   {{ background:{C['border2']}; border-radius:3px; min-height:24px; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}
+QScrollBar:horizontal {{ background:{C['surface']}; height:5px; border-radius:3px; margin:0; }}
+QScrollBar::handle:horizontal {{ background:{C['border2']}; border-radius:3px; min-width:24px; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}
+QLineEdit,QTextEdit,QComboBox,QDateEdit {{
+    background:{C['s2']}; border:1px solid {C['border']};
+    color:{C['text']}; border-radius:6px; padding:7px 10px; font-size:13px; }}
+QLineEdit:focus,QTextEdit:focus,QComboBox:focus,QDateEdit:focus {{ border-color:{C['accent']}; }}
+QComboBox::drop-down {{ border:none; width:18px; }}
+QComboBox QAbstractItemView {{
+    background:{C['s2']}; color:{C['text']};
+    border:1px solid {C['border2']}; selection-background-color:{C['s3']}; }}
+QDialog {{ background:{C['surface']}; }}
+QCheckBox {{ color:{C['sub']}; spacing:6px; font-size:11px; font-family:"Courier New"; }}
+QCheckBox::indicator {{ width:14px; height:14px; border-radius:3px;
+    border:1px solid {C['border2']}; background:{C['s2']}; }}
+QCheckBox::indicator:checked {{ background:{C['accent']}; border-color:{C['accent']}; }}
+QToolTip {{ background:{C['s3']}; color:{C['text']};
+    border:1px solid {C['border2']}; padding:4px 8px; border-radius:4px; }}
+QMessageBox {{ background:{C['surface']}; color:{C['text']}; }}
+QMessageBox QLabel {{ color:{C['text']}; background:transparent; font-size:13px; }}
+QMessageBox QPushButton {{
+    background:{C['s2']}; color:{C['text']};
+    border:1px solid {C['border2']}; border-radius:5px;
+    padding:6px 18px; font-size:12px; min-width:70px;
+}}
+QMessageBox QPushButton:hover {{ border-color:{C['accent']}; color:{C['accent']}; }}
+"""
+
+# ══════════════════════════════════════════════════════════
+#  DATA
+# ══════════════════════════════════════════════════════════
+def data_path():
+    base = os.path.dirname(sys.executable) if getattr(sys,"frozen",False) \
+           else os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "tasks_v3.json")   # 同じファイルを使い回す
+
+def load_data():
+    try:
+        with open(data_path(), encoding="utf-8") as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {"parents":[],"children":[]}
+    except Exception:
+        return {"parents":[],"children":[]}
+
+def save_data(d):
+    with open(data_path(),"w",encoding="utf-8") as f:
+        json.dump(d,f,ensure_ascii=False,indent=2)
+
+def nid(): return str(uuid.uuid4())[:8]
+
+def migrate_status(s):
+    return {"todo":"未着手","doing":"実行中","done":"完了"}.get(s, s)
+
+# ══════════════════════════════════════════════════════════
+#  UI HELPERS
+# ══════════════════════════════════════════════════════════
+def mk_btn(text, h=30, bg=None, fg=None, bdr=None, bold=False, fs=11):
+    b = QPushButton(text)
+    b.setFixedHeight(h)
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
+    bg_c=bg or "transparent"; fg_c=fg or C["sub"]; bdr_c=bdr or C["border"]
+    w="bold" if bold else "normal"
+    b.setStyleSheet(f"""
+        QPushButton {{
+            background:{bg_c}; color:{fg_c};
+            border:1px solid {bdr_c}; border-radius:5px;
+            padding:0 10px; font-size:{fs}px; font-weight:{w};
+            font-family:"Courier New";
+        }}
+        QPushButton:hover {{ border-color:{C['accent']}; color:{C['accent']};
+            background:rgba(232,255,71,.07); }}
+        QPushButton:pressed {{ background:rgba(232,255,71,.14); }}
+    """)
+    return b
+
+def mk_lbl(text, size=12, color=None, bold=False, mono=False, wrap=False):
+    w = QLabel(text)
+    f = QFont("Courier New" if mono else "Yu Gothic UI")
+    f.setPointSize(size); f.setBold(bold)
+    w.setFont(f)
+    w.setStyleSheet(f"color:{color or C['text']}; background:transparent; border:none;")
+    if wrap: w.setWordWrap(True)
+    return w
+
+def mk_sep(color=None):
+    f = QFrame(); f.setFrameShape(QFrame.Shape.HLine); f.setFixedHeight(1)
+    f.setStyleSheet(f"background:{color or C['border']}; border:none;")
+    return f
+
+def due_widget(due_str):
+    if not due_str: return None
+    try:
+        d=date.fromisoformat(due_str); today=date.today(); diff=(d-today).days
+        if diff<0:    col=C["red"];    txt=f"⚠ {due_str}（期限超過）"
+        elif diff==0: col=C["orange"]; txt=f"● 今日  {due_str}"
+        elif diff==1: col=C["orange"]; txt=f"◎ 明日  {due_str}"
+        elif diff<=7: col=C["blue"];   txt=f"○ {due_str}（あと{diff}日）"
+        else:         col=C["sub"];    txt=f"○ {due_str}"
+        return mk_lbl(txt, size=9, color=col, mono=True)
+    except Exception:
+        return None
+
+# ══════════════════════════════════════════════════════════
+#  CLICKABLE STATUS BADGE
+# ══════════════════════════════════════════════════════════
+class StatusBadge(QLabel):
+    toggled = pyqtSignal(str)
+
+    def __init__(self, status: str):
+        super().__init__()
+        self._status = status
+        self._refresh()
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("クリックでステータス変更")
+
+    def _refresh(self):
+        c = STATUS_C.get(self._status, C["sub"])
+        self.setText(f" {self._status} ")
+        self.setStyleSheet(
+            f"background:{c}; color:#0b0b0e; border-radius:4px;"
+            f" padding:2px 8px; border:none;"
+            f" font-family:'Courier New'; font-size:10px; font-weight:bold;"
+        )
+
+    def set_status(self, s):
+        self._status = s; self._refresh()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._status = NEXT_ST[self._status]
+            self._refresh()
+            self.toggled.emit(self._status)
+        super().mousePressEvent(e)
+
+class CollapseBtn(QPushButton):
+    def __init__(self, collapsed=False):
+        super().__init__("▼" if collapsed else "▲")
+        self.setFixedSize(26, 22)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(f"""
+            QPushButton {{ background:transparent; color:{C['sub']};
+                border:1px solid {C['border']}; border-radius:4px; font-size:9px; }}
+            QPushButton:hover {{ border-color:{C['accent']}; color:{C['accent']}; }}
+        """)
+
+# ══════════════════════════════════════════════════════════
+#  TASK DIALOG  (優先度なし)
+# ══════════════════════════════════════════════════════════
+class TaskDialog(QDialog):
+    def __init__(self, pw, task=None, default_status="未着手"):
+        super().__init__(pw)
+        self.setModal(True); self.setFixedWidth(440)
+        self.setWindowTitle("タスク追加 / 編集")
+        self.setStyleSheet(QSS+f"QDialog{{background:{C['surface']};border:1px solid {C['border2']};border-radius:12px;}}")
+        self.result_data=None; self._task=task or {}
+        self._ds=task.get("status",default_status) if task else default_status
+        self._build()
+
+    def _build(self):
+        v=QVBoxLayout(self); v.setContentsMargins(24,20,24,20); v.setSpacing(10)
+        v.addWidget(mk_lbl("タスクを追加 / 編集",size=11,color=C["accent"],bold=True,mono=True))
+
+        def field(lbl_text, widget):
+            v.addWidget(mk_lbl(lbl_text,size=9,color=C["sub"],mono=True))
+            v.addWidget(widget)
+
+        self.f_title=QLineEdit(self._task.get("title",""))
+        self.f_title.setPlaceholderText("タスク名 *")
+        self.f_title.returnPressed.connect(self._save)
+        field("タスク名", self.f_title)
+
+        self.f_note=QTextEdit(); self.f_note.setPlainText(self._task.get("note",""))
+        self.f_note.setFixedHeight(56); self.f_note.setPlaceholderText("メモ（任意）")
+        field("メモ", self.f_note)
+
+        # ステータスのみ（優先度なし）
+        c2=QVBoxLayout(); c2.addWidget(mk_lbl("ステータス",size=9,color=C["sub"],mono=True))
+        self.f_status=QComboBox()
+        for s in STATUSES: self.f_status.addItem(s)
+        idx=STATUSES.index(self._ds) if self._ds in STATUSES else 0
+        self.f_status.setCurrentIndex(idx)
+        c2.addWidget(self.f_status); v.addLayout(c2)
+
+        # 期限
+        due_row=QHBoxLayout(); due_row.setSpacing(10)
+        self._has_due=bool(self._task.get("due"))
+        self.cb_due=QCheckBox("期限を設定する"); self.cb_due.setChecked(self._has_due)
+        self.cb_due.toggled.connect(self._toggle_due)
+        due_row.addWidget(self.cb_due)
+
+        self.f_due=QDateEdit()
+        self.f_due.setCalendarPopup(True); self.f_due.setDisplayFormat("yyyy-MM-dd")
+        if self._has_due:
+            y,m,d2=map(int,self._task["due"].split("-"))
+            self.f_due.setDate(QDate(y,m,d2))
+        else:
+            self.f_due.setDate(QDate.currentDate())
+        self.f_due.setEnabled(self._has_due)
+        self._apply_due_style()
+        due_row.addWidget(self.f_due,1); v.addLayout(due_row)
+
+        v.addWidget(mk_sep())
+        foot=QHBoxLayout(); foot.addStretch()
+        cancel=mk_btn("キャンセル",h=34); cancel.clicked.connect(self.reject); foot.addWidget(cancel)
+        save=mk_btn("保存",h=34,bold=True,fs=12)
+        save.setStyleSheet(f"QPushButton{{background:{C['accent']};color:#0b0b0e;border:none;border-radius:5px;padding:0 18px;font-size:12px;font-weight:bold;font-family:'Courier New';}} QPushButton:hover{{background:#f0ff60;}}")
+        save.clicked.connect(self._save); foot.addWidget(save)
+        v.addLayout(foot)
+
+    def _apply_due_style(self):
+        if self._has_due:
+            self.f_due.setStyleSheet("")
+        else:
+            self.f_due.setStyleSheet(f"QDateEdit{{background:{C['s3']};color:{C['sub2']};border:1px solid {C['border']};border-radius:6px;padding:7px 10px;}}")
+
+    def _toggle_due(self, checked):
+        self._has_due=checked; self.f_due.setEnabled(checked); self._apply_due_style()
+        if checked and self.f_due.date()==QDate(2000,1,1):
+            self.f_due.setDate(QDate.currentDate())
+
+    def _save(self):
+        t=self.f_title.text().strip()
+        if not t:
+            self.f_title.setStyleSheet(f"QLineEdit{{border:1px solid {C['red']};background:{C['s2']};color:{C['text']};border-radius:6px;padding:7px 10px;}}"); return
+        due="" if not self._has_due else self.f_due.date().toString("yyyy-MM-dd")
+        self.result_data={"title":t,"note":self.f_note.toPlainText().strip(),
+                          "status":self.f_status.currentText(),"due":due}
+        self.accept()
+
+# ══════════════════════════════════════════════════════════
+#  SEQ CHIP   (直列タスク1件)
+# ══════════════════════════════════════════════════════════
+class SeqChip(QFrame):
+    changed    = pyqtSignal()
+    delete_req = pyqtSignal(str)   # child id のみ削除（連鎖しない）
+    edit_req   = pyqtSignal(str)
+    drag_start = pyqtSignal(object)
+
+    def __init__(self, child:dict, order:int, filter_status:str="all"):
+        super().__init__()
+        self.child=child; self.order=order; self._drag_pos=QPoint()
+        self._dim=filter_status!="all" and child.get("status")!=filter_status
+        self._build()
+
+    def _build(self):
+        c=self.child; done=c["status"]=="完了"
+        bg=C["s3"] if not done else C["surface"]
+        bdr=C["blue"] if not done else C["border"]
+        self.setObjectName("SeqChip")
+        self.setStyleSheet(
+            f"QFrame#SeqChip{{background:{bg};border:1px solid {bdr};"
+            f"border-radius:8px;min-width:140px;max-width:220px;}}")
+        self.setSizePolicy(QSizePolicy.Policy.Fixed,QSizePolicy.Policy.Minimum)
+        if self._dim:
+            eff=QGraphicsOpacityEffect(self); eff.setOpacity(0.35); self.setGraphicsEffect(eff)
+        else:
+            self.setGraphicsEffect(None)
+
+        v=QVBoxLayout(self); v.setContentsMargins(10,8,10,8); v.setSpacing(4)
+
+        top=QHBoxLayout(); top.setSpacing(4)
+        dh=mk_lbl("⠿",size=11,color=C["sub"])
+        dh.setCursor(Qt.CursorShape.SizeAllCursor); dh.setToolTip("ドラッグで順番変更")
+        top.addWidget(dh)
+        top.addWidget(mk_lbl(f"#{self.order}",size=9,color=C["sub"],mono=True))
+        tc=C["sub2"] if done else C["text"]
+        t=mk_lbl(c["title"],size=11,color=tc,wrap=True)
+        if done: t.setStyleSheet(f"color:{C['sub2']};text-decoration:line-through;background:transparent;border:none;")
+        top.addWidget(t,1); v.addLayout(top)
+
+        brow=QHBoxLayout(); brow.setSpacing(4)
+        self._sb=StatusBadge(c["status"]); self._sb.toggled.connect(self._on_status)
+        brow.addWidget(self._sb)
+        tag_btn=TodayTagBtn(bool(c.get("today_tag")))
+        tag_btn.toggled_tag.connect(lambda v: self._set_today_tag(v))
+        brow.addWidget(tag_btn)
+        brow.addStretch()
+        v.addLayout(brow)
+
+        dw=due_widget(c.get("due",""))
+        if dw: v.addWidget(dw)
+
+        note_text=c.get("note","").strip()
+        if note_text:
+            nt=mk_lbl(note_text,size=8,color=C["sub"],wrap=True)
+            nt.setStyleSheet(f"color:{C['sub']};background:transparent;border:none;padding:0;")
+            v.addWidget(nt)
+
+        ah=QHBoxLayout(); ah.setSpacing(4)
+        ed=mk_btn("編集",h=20,fs=9); ed.clicked.connect(lambda:self.edit_req.emit(c["id"])); ah.addWidget(ed)
+        dl=mk_btn("削除",h=20,fs=9)
+        dl.setStyleSheet(dl.styleSheet()+f"QPushButton:hover{{border-color:{C['red']};color:{C['red']};}}")
+        dl.clicked.connect(lambda:self.delete_req.emit(c["id"])); ah.addWidget(dl)
+        ah.addStretch()
+        v.addLayout(ah)
+
+    def _on_status(self,s): self.child["status"]=s; self.changed.emit()
+    def _set_today_tag(self,v): self.child["today_tag"]=v; self.changed.emit()
+
+    def mousePressEvent(self,e):
+        if e.button()==Qt.MouseButton.LeftButton: self._drag_pos=e.pos()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self,e):
+        if e.buttons()==Qt.MouseButton.LeftButton:
+            if (e.pos()-self._drag_pos).manhattanLength()>8: self.drag_start.emit(self)
+        super().mouseMoveEvent(e)
+
+# ══════════════════════════════════════════════════════════
+#  PARALLEL ROW
+# ══════════════════════════════════════════════════════════
+class ParallelRow(QFrame):
+    changed         = pyqtSignal()
+    delete_parallel = pyqtSignal(str)   # 並列タスク削除（配下の直列も消す）
+    delete_seq      = pyqtSignal(str)   # 直列タスク単体削除
+    add_seq_req     = pyqtSignal(str)   # parallel child id
+    edit_req        = pyqtSignal(str)
+    drag_start      = pyqtSignal(object)
+    seq_reorder_req = pyqtSignal(str,str,int)  # parallel_id, child_id, insert_before_index
+
+    def __init__(self, pc:dict, seq_children:list, hide_done_seq:bool=False,
+                 filter_status:str="all", collapsed:bool=False, on_collapse=None,
+                 collapse_seq_all:bool=False):
+        super().__init__()
+        self.pc=pc; self.seq=seq_children
+        self.hide_done_seq=hide_done_seq
+        self.filter_status=filter_status
+        self._dim=filter_status!="all" and pc.get("status")!=filter_status
+        self._collapsed=collapsed
+        self._on_collapse=on_collapse
+        self._collapse_seq_all=collapse_seq_all
+        self._drag_pos=QPoint()
+        self._drop_index=-1
+        self._build()
+
+    def _visible_seq(self):
+        """hide_done_seq=True のとき完了タスクを除外"""
+        if self.hide_done_seq:
+            return [c for c in self.seq if c["status"]!="完了"]
+        return list(self.seq)
+
+    def _build(self):
+        done=self.pc["status"]=="完了"
+        # フィルターに合わないタスクはグレーアウト
+        if self._dim:
+            bg=C["surface"]; bdr_left=C["border2"]; bdr=C["border"]
+            opacity="0.35"
+        else:
+            bg=C["surface"] if not done else C["s2"]
+            bdr_left=C["blue"] if not done else C["border2"]; bdr=C["border2"] if not done else C["border"]
+            opacity="1"
+        self.setObjectName("PRow")
+        self.setStyleSheet(
+            f"QFrame#PRow{{background:{bg};"
+            f"border:1px solid {bdr};"
+            f"border-left:3px solid {bdr_left};"
+            f"border-radius:8px;opacity:{opacity};}}")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Minimum)
+        # グレーアウト時は透明度を下げる
+        if self._dim:
+            eff=QGraphicsOpacityEffect(self); eff.setOpacity(0.4); self.setGraphicsEffect(eff)
+        else:
+            self.setGraphicsEffect(None)
+
+        outer=QVBoxLayout(self); outer.setContentsMargins(12,10,12,10); outer.setSpacing(8)
+
+        # header
+        top=QHBoxLayout(); top.setSpacing(8)
+        dh=mk_lbl("⠿",size=13,color=C["sub"])
+        dh.setCursor(Qt.CursorShape.SizeAllCursor); dh.setToolTip("ドラッグして並び替え")
+        top.addWidget(dh)
+        self._col_btn=CollapseBtn(self._collapsed)
+        self._col_btn.setToolTip("折りたたむ / 展開"); self._col_btn.clicked.connect(self._toggle_self)
+        top.addWidget(self._col_btn)
+        self._sb=StatusBadge(self.pc["status"]); self._sb.toggled.connect(self._on_status)
+        top.addWidget(self._sb)
+        tag_btn=TodayTagBtn(bool(self.pc.get("today_tag")))
+        tag_btn.toggled_tag.connect(lambda v: self._set_today_tag(v))
+        top.addWidget(tag_btn)
+        tc=C["sub2"] if done else C["text"]
+        t=mk_lbl(self.pc["title"],size=12,color=tc,bold=True,wrap=True)
+        if done: t.setStyleSheet(f"color:{C['sub2']};text-decoration:line-through;background:transparent;border:none;font-weight:bold;")
+        top.addWidget(t)
+        top.addStretch()
+        outer.addLayout(top)
+
+        dw=due_widget(self.pc.get("due",""))
+        if dw:
+            dr=QHBoxLayout(); dr.addSpacing(22); dr.addWidget(dw); dr.addStretch()
+            outer.addLayout(dr)
+
+        note_text=self.pc.get("note","").strip()
+        if note_text:
+            nr=QHBoxLayout(); nr.addSpacing(22)
+            note_lbl=mk_lbl(note_text,size=9,color=C["sub"],wrap=True)
+            note_lbl.setStyleSheet(f"color:{C['sub']};background:{C['s3']};border:1px solid {C['border']};"
+                                   f"border-radius:4px;padding:3px 6px;")
+            nr.addWidget(note_lbl,1); nr.addStretch()
+            outer.addLayout(nr)
+
+        # body
+        self._body=QWidget(); self._body.setStyleSheet("background:transparent;")
+        bl=QVBoxLayout(self._body); bl.setContentsMargins(0,0,0,0); bl.setSpacing(6)
+
+        act=QHBoxLayout(); act.setSpacing(6)
+        ed=mk_btn("編集",h=24,fs=10); ed.clicked.connect(lambda:self.edit_req.emit(self.pc["id"])); act.addWidget(ed)
+        dl2=mk_btn("削除",h=24,fs=10)
+        dl2.setStyleSheet(dl2.styleSheet()+f"QPushButton:hover{{border-color:{C['red']};color:{C['red']};}}")
+        dl2.clicked.connect(lambda:self.delete_parallel.emit(self.pc["id"])); act.addWidget(dl2)
+        act.addStretch()
+        bl.addLayout(act)
+
+        bl.addWidget(mk_sep(C["border"]))
+
+        # chain header
+        chain_hdr=QHBoxLayout(); chain_hdr.setSpacing(6)
+        chain_hdr.addWidget(mk_lbl("直列タスク",size=9,color=C["purple"],mono=True))
+        chain_hdr.addStretch()
+        bl.addLayout(chain_hdr)
+
+        # chain scroll
+        self._scroll=QScrollArea()
+        self._scroll.setWidgetResizable(True); self._scroll.setFixedHeight(160)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        self._scroll.setAcceptDrops(True)
+        self._scroll.dragEnterEvent=self._seq_drag_enter
+        self._scroll.dragMoveEvent =self._seq_drag_move
+        self._scroll.dropEvent     =self._seq_drop
+
+        self._chain_w=QWidget(); self._chain_w.setStyleSheet("background:transparent;")
+        self._chain_layout=QHBoxLayout(self._chain_w)
+        self._chain_layout.setContentsMargins(4,4,4,4); self._chain_layout.setSpacing(0)
+        self._build_chain()
+        self._scroll.setWidget(self._chain_w)
+        bl.addWidget(self._scroll)
+        self._scroll.setVisible(not self._collapse_seq_all)
+
+        self._body.setVisible(not self._collapsed)
+        outer.addWidget(self._body)
+
+    def _build_chain(self):
+        while self._chain_layout.count():
+            item=self._chain_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        visible=self._visible_seq()
+        for i,sc in enumerate(visible):
+            chip=SeqChip(sc, i+1, filter_status=self.filter_status)
+            chip.changed.connect(self.changed.emit)
+            chip.delete_req.connect(self.delete_seq.emit)
+            chip.edit_req.connect(self.edit_req.emit)
+            chip.drag_start.connect(self._start_seq_drag)
+            self._chain_layout.addWidget(chip)
+            if i<len(visible)-1:
+                arr=mk_lbl(" → ",size=14,color=C["sub"],mono=True)
+                arr.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+                self._chain_layout.addWidget(arr)
+
+        # 末尾に常に＋ボタン
+        if visible:
+            arr_end=mk_lbl(" → ",size=14,color=C["sub"],mono=True)
+            arr_end.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            self._chain_layout.addWidget(arr_end)
+
+        add_chip=QPushButton("＋")
+        add_chip.setFixedSize(36,36); add_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_chip.setStyleSheet(f"""
+            QPushButton {{background:{C['s3']};color:{C['purple']};
+                border:1px dashed {C['purple']};border-radius:8px;font-size:16px;font-weight:bold;}}
+            QPushButton:hover {{background:rgba(176,111,255,.15);border-style:solid;}}
+        """)
+        add_chip.setToolTip("直列タスクを追加")
+        add_chip.clicked.connect(lambda:self.add_seq_req.emit(self.pc["id"]))
+        self._chain_layout.addWidget(add_chip)
+        self._chain_layout.addStretch()
+
+    def _toggle_self(self):
+        self._collapsed=not self._collapsed
+        self._col_btn.setText("▼" if self._collapsed else "▲")
+        self._body.setVisible(not self._collapsed)
+        if self._on_collapse:
+            self._on_collapse(self.pc["id"], self._collapsed)
+
+    def _on_status(self,s):
+        self.pc["status"]=s; self.changed.emit()
+    def _set_today_tag(self,v):
+        self.pc["today_tag"]=v; self.changed.emit()
+
+    # ── seq drag & drop ──────────────────────────────────
+    def _start_seq_drag(self,chip):
+        drag=QDrag(chip); md=QMimeData()
+        md.setText(f"seq::{self.pc['id']}::{chip.child['id']}")
+        drag.setMimeData(md)
+        px=chip.grab()
+        drag.setPixmap(px.scaled(px.width(),min(px.height(),80),
+            Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+        drag.setHotSpot(QPoint(30,10))
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def _seq_drag_enter(self,e):
+        if e.mimeData().hasText() and e.mimeData().text().startswith("seq::"):
+            e.acceptProposedAction()
+
+    def _seq_drag_move(self,e):
+        if e.mimeData().hasText() and e.mimeData().text().startswith("seq::"):
+            e.acceptProposedAction()
+
+    def _seq_drop(self,e):
+        txt=e.mimeData().text()
+        if not txt.startswith("seq::"): return
+        parts=txt.split("::")
+        if len(parts)!=3: return
+        _,par_id,child_id=parts
+        if par_id!=self.pc["id"]: return
+
+        # ドロップ位置からチップのインデックスを計算
+        drop_x=e.position().x()
+        insert_idx=self._calc_drop_index(drop_x, child_id)
+        self.seq_reorder_req.emit(self.pc["id"], child_id, insert_idx)
+        e.acceptProposedAction()
+
+    def _calc_drop_index(self, drop_x:float, dragged_id:str) -> int:
+        """ドロップX座標からSEQチップの挿入インデックスを計算"""
+        chips=[]
+        for i in range(self._chain_layout.count()):
+            w=self._chain_layout.itemAt(i).widget()
+            if isinstance(w, SeqChip) and w.child["id"]!=dragged_id:
+                chips.append(w)
+
+        for i,chip in enumerate(chips):
+            chip_center=chip.x()+chip.width()/2
+            if drop_x < chip_center:
+                return i
+        return len(chips)   # 末尾
+
+    # ── parallel drag ──────────────────────────────────
+    def mousePressEvent(self,e):
+        if e.button()==Qt.MouseButton.LeftButton: self._drag_pos=e.pos()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self,e):
+        if e.buttons()==Qt.MouseButton.LeftButton:
+            if (e.pos()-self._drag_pos).manhattanLength()>10: self.drag_start.emit(self)
+        super().mouseMoveEvent(e)
+
+# ══════════════════════════════════════════════════════════
+#  PARENT CARD
+# ══════════════════════════════════════════════════════════
+class ParentCard(QFrame):
+    changed         = pyqtSignal()
+    add_parallel    = pyqtSignal(str)
+    add_seq         = pyqtSignal(str)
+    del_parallel    = pyqtSignal(str)
+    del_seq         = pyqtSignal(str)
+    del_self        = pyqtSignal(str)
+    edit_child      = pyqtSignal(str)
+    edit_self       = pyqtSignal(str)
+    drag_start      = pyqtSignal(object)
+    seq_reorder_req = pyqtSignal(str,str,int)
+    par_reorder_req = pyqtSignal(str,str,int)  # parent_id, child_id, insert_before
+
+    def __init__(self, pt, parallel_children, all_children, filter_status="all",
+                 hide_done_seq=False, collapsed=False, collapsed_parallels=None,
+                 on_collapse=None, on_collapse_parallel=None, collapse_seq_all=False):
+        super().__init__()
+        self.pt=pt; self.pc=parallel_children; self.all=all_children
+        self.filter_status=filter_status; self.hide_done_seq=hide_done_seq
+        self._collapsed=collapsed
+        self._collapsed_parallels=collapsed_parallels or {}
+        self._on_collapse=on_collapse
+        self._on_collapse_parallel=on_collapse_parallel
+        self._collapse_seq_all=collapse_seq_all
+        self._drag_pos=QPoint()
+        self._build()
+
+    def _seq_of(self,pid):
+        return sorted([c for c in self.all if c.get("seq_parent_id")==pid],
+                      key=lambda x:x.get("seq_order",0))
+
+    def _all_done(self):
+        items=[self.pt]+self.pc+[s for p in self.pc for s in self._seq_of(p["id"])]
+        return all(i.get("status","未着手")=="完了" for i in items)
+
+    def _build(self):
+        for ch in self.findChildren(QWidget): ch.deleteLater()
+        done=self._all_done()
+        pt_dim=self.filter_status!="all" and self.pt.get("status","未着手")!=self.filter_status
+        bg=C["surface"] if not done else C["s2"]
+        top_c=C["green"] if done else (C["border2"] if pt_dim else C["accent"])
+        self.setObjectName("PCard")
+        self.setStyleSheet(
+            f"QFrame#PCard{{background:{bg};"
+            f"border:1px solid {C['border2'] if not done else C['border']};"
+            f"border-top:3px solid {top_c};border-radius:10px;}}")
+
+        root=QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
+
+        hdr=QWidget(); hdr.setStyleSheet("background:transparent;")
+        hl=QHBoxLayout(hdr); hl.setContentsMargins(14,10,14,10); hl.setSpacing(8)
+        dh=mk_lbl("⠿",size=14,color=C["sub"])
+        dh.setCursor(Qt.CursorShape.SizeAllCursor); dh.setToolTip("ドラッグして並び替え")
+        hl.addWidget(dh)
+        self._col_btn=CollapseBtn(self._collapsed)
+        self._col_btn.setToolTip("折りたたむ / 展開"); self._col_btn.clicked.connect(self._toggle)
+        hl.addWidget(self._col_btn)
+        self._sb=StatusBadge(self.pt["status"]); self._sb.toggled.connect(self._on_status)
+        hl.addWidget(self._sb)
+        tag_btn=TodayTagBtn(bool(self.pt.get("today_tag")))
+        tag_btn.toggled_tag.connect(lambda v: self._set_today_tag(v))
+        hl.addWidget(tag_btn)
+        if done:
+            dl=mk_lbl(" ✓ ",size=9,color="#0b0b0e",mono=True)
+            dl.setStyleSheet(f"background:{C['green']};color:#0b0b0e;border-radius:3px;padding:1px 6px;border:none;")
+            hl.addWidget(dl)
+        tc=C["sub2"] if done else C["text"]
+        t=mk_lbl(self.pt["title"],size=13,color=tc,bold=True,wrap=True)
+        if done: t.setStyleSheet(f"color:{C['sub2']};text-decoration:line-through;background:transparent;border:none;font-weight:bold;")
+        hl.addWidget(t)
+        hl.addStretch()
+        root.addWidget(hdr)
+
+        dw=due_widget(self.pt.get("due",""))
+        if dw:
+            dr=QWidget(); dr.setStyleSheet("background:transparent;")
+            drl=QHBoxLayout(dr); drl.setContentsMargins(46,0,14,6)
+            drl.addWidget(dw); drl.addStretch(); root.addWidget(dr)
+
+        note_text=self.pt.get("note","").strip()
+        if note_text:
+            nw=QWidget(); nw.setStyleSheet("background:transparent;")
+            nl=QHBoxLayout(nw); nl.setContentsMargins(46,0,14,4)
+            note_lbl=mk_lbl(note_text,size=9,color=C["sub"],wrap=True)
+            note_lbl.setStyleSheet(f"color:{C['sub']};background:{C['s2']};border:1px solid {C['border']};"
+                                   f"border-radius:4px;padding:4px 8px;")
+            nl.addWidget(note_lbl,1); root.addWidget(nw)
+
+        root.addWidget(mk_sep())
+
+        self._body=QWidget(); self._body.setStyleSheet("background:transparent;")
+        self._body.setAcceptDrops(True)
+        self._body.dragEnterEvent = self._par_drag_enter
+        self._body.dragMoveEvent  = self._par_drag_move
+        self._body.dropEvent      = self._par_drop
+        bl=QVBoxLayout(self._body); bl.setContentsMargins(14,10,14,12); bl.setSpacing(8)
+
+        if not self.pc:
+            bl.addWidget(mk_lbl("並列子タスクなし（＋並列タスクで追加）",size=10,color=C["sub"]))
+        else:
+            for pc in self.pc:
+                seq=self._seq_of(pc["id"])
+                row=ParallelRow(pc, seq, hide_done_seq=self.hide_done_seq,
+                                filter_status=self.filter_status,
+                                collapsed=self._collapsed_parallels.get(pc["id"], False),
+                                on_collapse=self._on_collapse_parallel,
+                                collapse_seq_all=self._collapse_seq_all)
+                row.changed.connect(self.changed.emit)
+                row.delete_parallel.connect(self.del_parallel.emit)
+                row.delete_seq.connect(self.del_seq.emit)
+                row.add_seq_req.connect(self.add_seq.emit)
+                row.edit_req.connect(self.edit_child.emit)
+                row.seq_reorder_req.connect(self.seq_reorder_req.emit)
+                row.drag_start.connect(self._start_parallel_drag)
+                bl.addWidget(row)
+
+        fl=QHBoxLayout(); fl.setSpacing(6)
+        ed_p=mk_btn("編集",h=28,fs=11); ed_p.clicked.connect(lambda:self.edit_self.emit(self.pt["id"])); fl.addWidget(ed_p)
+        ap=mk_btn("＋並列タスク",h=28,fs=11)
+        ap.setStyleSheet(ap.styleSheet()+f"QPushButton{{border-color:{C['blue']};color:{C['blue']};}} QPushButton:hover{{background:rgba(61,207,255,.08);}}")
+        ap.clicked.connect(lambda:self.add_parallel.emit(self.pt["id"])); fl.addWidget(ap)
+        dp=mk_btn("削除",h=28,fs=11)
+        dp.setStyleSheet(dp.styleSheet()+f"QPushButton:hover{{border-color:{C['red']};color:{C['red']};}}")
+        dp.clicked.connect(lambda:self.del_self.emit(self.pt["id"])); fl.addWidget(dp)
+        fl.addStretch()
+        bl.addLayout(fl)
+
+        self._body.setVisible(not self._collapsed)
+        root.addWidget(self._body)
+
+    def _on_status(self,s): self.pt["status"]=s; self.changed.emit()
+    def _set_today_tag(self,v): self.pt["today_tag"]=v; self.changed.emit()
+
+    def _toggle(self):
+        self._collapsed=not self._collapsed
+        self._col_btn.setText("▼" if self._collapsed else "▲")
+        self._body.setVisible(not self._collapsed)
+        if self._on_collapse:
+            self._on_collapse(self.pt["id"], self._collapsed)
+
+    def mousePressEvent(self,e):
+        if e.button()==Qt.MouseButton.LeftButton: self._drag_pos=e.pos()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self,e):
+        if e.buttons()==Qt.MouseButton.LeftButton:
+            if (e.pos()-self._drag_pos).manhattanLength()>10: self.drag_start.emit(self)
+        super().mouseMoveEvent(e)
+
+    def _start_parallel_drag(self,row_widget):
+        drag=QDrag(row_widget); md=QMimeData()
+        md.setText(f"parallel::{self.pt['id']}::{row_widget.pc['id']}")
+        drag.setMimeData(md)
+        px=row_widget.grab()
+        scaled=px.scaled(px.width(),min(px.height(),80),
+            Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+        drag.setPixmap(scaled); drag.setHotSpot(QPoint(scaled.width()//2,10))
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def _par_drag_enter(self,e):
+        if e.mimeData().hasText() and e.mimeData().text().startswith(f"parallel::{self.pt['id']}::"):
+            e.acceptProposedAction()
+
+    def _par_drag_move(self,e):
+        if e.mimeData().hasText() and e.mimeData().text().startswith(f"parallel::{self.pt['id']}::"):
+            e.acceptProposedAction()
+
+    def _par_drop(self,e):
+        txt=e.mimeData().text()
+        if not txt.startswith(f"parallel::{self.pt['id']}::"): return
+        child_id=txt.split("::")[2]
+        drop_y=e.position().y()
+        # body内のParallelRowウィジェットを上から順に取得して挿入位置を計算
+        bl=self._body.layout()
+        rows=[bl.itemAt(i).widget() for i in range(bl.count())
+              if isinstance(bl.itemAt(i).widget(), ParallelRow)]
+        # dragged rowを除外してインデックス計算
+        rows_excl=[r for r in rows if r.pc["id"]!=child_id]
+        insert_idx=len(rows_excl)
+        for i,row in enumerate(rows_excl):
+            row_y=row.mapTo(self._body, QPoint(0,0)).y()
+            if drop_y < row_y + row.height()/2:
+                insert_idx=i; break
+        self.par_reorder_req.emit(self.pt["id"], child_id, insert_idx)
+        e.acceptProposedAction()
+
+# ══════════════════════════════════════════════════════════
+#  DATE TAB
+# ══════════════════════════════════════════════════════════
+class DateTab(QWidget):
+    def __init__(self,get_data):
+        super().__init__(); self._get_data=get_data; self._build()
+
+    def _build(self):
+        v=QVBoxLayout(self); v.setContentsMargins(0,0,0,0); v.setSpacing(0)
+        tb=QWidget(); tb.setStyleSheet("background:transparent;")
+        tl=QHBoxLayout(tb); tl.setContentsMargins(28,12,28,12); tl.setSpacing(10)
+        tl.addWidget(mk_lbl("日付別タスク一覧",size=12,color=C["accent"],bold=True,mono=True))
+        tl.addStretch()
+        self._show_done=QCheckBox("完了済みも表示"); self._show_done.toggled.connect(self.refresh)
+        tl.addWidget(self._show_done)
+        v.addWidget(tb); v.addWidget(mk_sep())
+
+        scroll=QScrollArea(); scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        self._c=QWidget(); self._c.setStyleSheet("background:transparent;")
+        self._cl=QVBoxLayout(self._c); self._cl.setContentsMargins(28,16,28,28); self._cl.setSpacing(0)
+        self._cl.addStretch(); scroll.setWidget(self._c); v.addWidget(scroll,1)
+
+    def refresh(self):
+        self.setUpdatesEnabled(False)
+        while self._cl.count()>1:
+            item=self._cl.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        data=self._get_data(); parents=data.get("parents",[]); children=data.get("children",[])
+        show_done=self._show_done.isChecked(); today=date.today()
+        parent_map={p["id"]:p for p in parents}
+        parallel_map={c["id"]:c for c in children if not c.get("seq_parent_id")}
+
+        items=[]
+        # 親タスクも期限付きなら含める
+        for p in parents:
+            if not show_done and p.get("status")=="完了": continue
+            if p.get("due"):
+                items.append({**p, "_is_parent": True})
+        for c in children:
+            if not show_done and c.get("status")=="完了": continue
+            items.append(c)
+
+        groups={}; no_due=[]
+        for c in items:
+            due=c.get("due","")
+            if due: groups.setdefault(due,[]).append(c)
+            else:   no_due.append(c)
+
+        sorted_dates=sorted(groups.keys()); idx=0
+        for due_str in sorted_dates:
+            tasks=groups[due_str]
+            try:
+                d=date.fromisoformat(due_str); diff=(d-today).days
+                if diff<0:    col=C["red"];    lbl_t=f"⚠  {due_str}（期限超過）"
+                elif diff==0: col=C["orange"]; lbl_t=f"●  今日  {due_str}"
+                elif diff==1: col=C["orange"]; lbl_t=f"◎  明日  {due_str}"
+                elif diff<=7: col=C["blue"];   lbl_t=f"○  今週  {due_str}（あと{diff}日）"
+                else:         col=C["sub"];    lbl_t=f"○  {due_str}（あと{diff}日）"
+            except Exception:
+                col=C["sub"]; lbl_t=due_str
+            self._add_group_header(lbl_t,col,len(tasks),idx); idx+=1
+            for task in tasks:
+                self._cl.insertWidget(self._cl.count()-1,
+                    self._make_item(task,parent_map,parallel_map))
+
+        if no_due:
+            self._add_group_header("○  期限なし",C["sub"],len(no_due),idx)
+            for task in no_due:
+                self._cl.insertWidget(self._cl.count()-1,
+                    self._make_item(task,parent_map,parallel_map))
+
+        if not sorted_dates and not no_due:
+            e=mk_lbl("期限付きタスクがありません",size=11,color=C["sub"])
+            e.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            e.setStyleSheet(f"color:{C['sub']};border:1px dashed {C['border']};border-radius:10px;padding:40px;")
+            self._cl.insertWidget(0,e)
+
+        self.setUpdatesEnabled(True)
+
+    def _add_group_header(self,text,color,count,idx):
+        gh=QWidget(); gh.setStyleSheet("background:transparent;")
+        gl=QHBoxLayout(gh); gl.setContentsMargins(0,20 if idx>0 else 0,0,6)
+        gl.addWidget(mk_lbl(text,size=11,color=color,bold=True,mono=True)); gl.addStretch()
+        gl.addWidget(mk_lbl(f"{count} 件",size=9,color=C["sub"],mono=True))
+        self._cl.insertWidget(self._cl.count()-1,gh)
+        sep=QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"background:{color};border:none;max-height:1px;")
+        self._cl.insertWidget(self._cl.count()-1,sep)
+
+    def _make_item(self, task, parent_map, parallel_map):
+        """表示順: ステータスバッジ → 親タスク名 → 子タスク名"""
+        done=task.get("status")=="完了"
+        is_parent=task.get("_is_parent", False)
+        bg=C["s2"] if not done else C["surface"]
+        bdr_left=C["accent"] if is_parent else (C["blue"] if not done else C["border2"])
+        item=QFrame(); item.setObjectName("DateItem")
+        item.setStyleSheet(
+            f"QFrame#DateItem{{background:{bg};"
+            f"border:1px solid {C['border']};"
+            f"border-left:3px solid {bdr_left};"
+            f"border-radius:6px;margin-bottom:6px;}}")
+
+        h=QHBoxLayout(item); h.setContentsMargins(12,8,12,8); h.setSpacing(10)
+
+        # 1. ステータスバッジ
+        badge=StatusBadge(task["status"]); h.addWidget(badge)
+
+        if is_parent:
+            # 親タスクには「親」ラベルを表示
+            pl=mk_lbl("親タスク", size=9, color=C["accent"], mono=True)
+            pl.setStyleSheet(
+                f"color:{C['accent']};background:rgba(232,255,71,.08);"
+                f"border:1px solid {C['accent']};border-radius:3px;"
+                f"padding:1px 6px;")
+            h.addWidget(pl)
+        else:
+            # 2. 親タスク名（小さく）
+            parent=parent_map.get(task.get("parent_id",""))
+            if parent:
+                seq_par_id=task.get("seq_parent_id")
+                if seq_par_id:
+                    par_child=parallel_map.get(seq_par_id)
+                    parent_txt=f"{parent['title']} › {par_child['title']}" if par_child else parent["title"]
+                else:
+                    parent_txt=parent["title"]
+                pl=mk_lbl(parent_txt, size=9, color=C["sub"], mono=False)
+                pl.setStyleSheet(
+                    f"color:{C['sub']};background:{C['s3']};"
+                    f"border:1px solid {C['border']};border-radius:3px;"
+                    f"padding:1px 6px;max-width:200px;")
+                pl.setWordWrap(False)
+                h.addWidget(pl)
+
+        # 3. タスク名（メイン）
+        tc=C["sub2"] if done else C["text"]
+        t=mk_lbl(task["title"],size=12,color=tc,wrap=True)
+        if done: t.setStyleSheet(f"color:{C['sub2']};text-decoration:line-through;background:transparent;border:none;")
+        h.addWidget(t,1)
+
+        return item
+
+# ══════════════════════════════════════════════════════════
+#  TODAY TAG BUTTON  (汎用)
+# ══════════════════════════════════════════════════════════
+class TodayTagBtn(QPushButton):
+    toggled_tag = pyqtSignal(bool)
+
+    def __init__(self, active: bool):
+        super().__init__()
+        self.setFixedSize(26, 22)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("今日やるタスクにタグ付け")
+        self._active = active
+        self._refresh()
+        self.clicked.connect(self._toggle)
+
+    def _refresh(self):
+        if self._active:
+            self.setText("★")
+            self.setStyleSheet(f"""
+                QPushButton {{background:rgba(255,210,50,.18);color:#ffd232;
+                    border:1px solid #ffd232;border-radius:4px;font-size:11px;}}
+                QPushButton:hover {{background:rgba(255,210,50,.30);}}
+            """)
+        else:
+            self.setText("☆")
+            self.setStyleSheet(f"""
+                QPushButton {{background:transparent;color:{C['sub']};
+                    border:1px solid {C['border']};border-radius:4px;font-size:11px;}}
+                QPushButton:hover {{border-color:#ffd232;color:#ffd232;}}
+            """)
+
+    def set_active(self, v):
+        self._active = v; self._refresh()
+
+    def _toggle(self):
+        self._active = not self._active
+        self._refresh()
+        self.toggled_tag.emit(self._active)
+
+# ══════════════════════════════════════════════════════════
+#  TODAY TAB
+# ══════════════════════════════════════════════════════════
+class TodayItem(QFrame):
+    """今日やるタブの1行アイテム（ドラッグ対応）"""
+    drag_start = pyqtSignal(object)
+
+    def __init__(self, task, kind, parent_map, parallel_map, on_status, on_untag):
+        super().__init__()
+        self.task = task
+        self._drag_pos = QPoint()
+        self._build(task, kind, parent_map, parallel_map, on_status, on_untag)
+
+    def _build(self, task, kind, parent_map, parallel_map, on_status, on_untag):
+        done = task.get("status") == "完了"
+        bg = C["s2"] if not done else C["surface"]
+        self.setObjectName("TodayItem")
+        self.setStyleSheet(
+            f"QFrame#TodayItem{{background:{bg};"
+            f"border:1px solid {'#ffd232' if not done else C['border']};"
+            f"border-left:3px solid {'#ffd232' if not done else C['border2']};"
+            f"border-radius:6px;}}")
+
+        h = QHBoxLayout(self); h.setContentsMargins(12,8,12,8); h.setSpacing(10)
+
+        # ドラッグハンドル
+        dh = mk_lbl("⠿", size=13, color=C["sub"])
+        dh.setCursor(Qt.CursorShape.SizeAllCursor)
+        dh.setToolTip("ドラッグして並び替え")
+        h.addWidget(dh)
+
+        # ステータスバッジ
+        badge = StatusBadge(task["status"])
+        badge.toggled.connect(lambda s: on_status(task, s))
+        h.addWidget(badge)
+
+        # 親タスク名（子タスクの場合）
+        if kind == "child":
+            parent = parent_map.get(task.get("parent_id", ""))
+            if parent:
+                seq_par_id = task.get("seq_parent_id")
+                if seq_par_id:
+                    par_child = parallel_map.get(seq_par_id)
+                    parent_txt = f"{parent['title']} › {par_child['title']}" if par_child else parent["title"]
+                else:
+                    parent_txt = parent["title"]
+                pl = mk_lbl(parent_txt, size=9, color=C["sub"])
+                pl.setStyleSheet(f"color:{C['sub']};background:{C['s3']};"
+                                 f"border:1px solid {C['border']};border-radius:3px;"
+                                 f"padding:1px 6px;max-width:200px;")
+                h.addWidget(pl)
+
+        # タスク名
+        tc = C["sub2"] if done else C["text"]
+        t = mk_lbl(task["title"], size=12, color=tc, wrap=True)
+        if done: t.setStyleSheet(f"color:{C['sub2']};text-decoration:line-through;"
+                                  f"background:transparent;border:none;")
+        h.addWidget(t, 1)
+
+        # 期限
+        dw = due_widget(task.get("due", ""))
+        if dw: h.addWidget(dw)
+
+        # タグ解除ボタン
+        untag = QPushButton("★ 外す")
+        untag.setFixedHeight(24)
+        untag.setCursor(Qt.CursorShape.PointingHandCursor)
+        untag.setStyleSheet(f"""
+            QPushButton {{background:rgba(255,210,50,.12);color:#ffd232;
+                border:1px solid #ffd232;border-radius:4px;
+                font-size:10px;padding:0 8px;font-family:'Courier New';}}
+            QPushButton:hover {{background:rgba(255,210,50,.25);}}
+        """)
+        untag.clicked.connect(lambda: on_untag(task["id"]))
+        h.addWidget(untag)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = e.pos()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if e.buttons() == Qt.MouseButton.LeftButton:
+            if (e.pos() - self._drag_pos).manhattanLength() > 10:
+                self.drag_start.emit(self)
+        super().mouseMoveEvent(e)
+
+
+class TodayTab(QWidget):
+    def __init__(self, get_data, on_untag, on_save=None):
+        super().__init__()
+        self._get_data = get_data
+        self._on_untag = on_untag   # callback(task_id)
+        self._on_save = on_save     # callback() for saving after status change
+        self._build()
+
+    def _build(self):
+        v = QVBoxLayout(self); v.setContentsMargins(0,0,0,0); v.setSpacing(0)
+
+        tb = QWidget(); tb.setStyleSheet("background:transparent;")
+        tl = QHBoxLayout(tb); tl.setContentsMargins(28,12,28,12); tl.setSpacing(10)
+        tl.addWidget(mk_lbl("今日やるタスク ★", size=12, color="#ffd232", bold=True, mono=True))
+        tl.addStretch()
+        self._count_lbl = mk_lbl("", size=10, color=C["sub"], mono=True)
+        tl.addWidget(self._count_lbl)
+        v.addWidget(tb); v.addWidget(mk_sep())
+
+        self._scroll = QScrollArea(); self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        self._scroll.setAcceptDrops(True)
+        self._scroll.dragEnterEvent = self._drag_enter
+        self._scroll.dragMoveEvent  = self._drag_move
+        self._scroll.dropEvent      = self._drop
+
+        self._c = QWidget(); self._c.setStyleSheet("background:transparent;")
+        self._cl = QVBoxLayout(self._c)
+        self._cl.setContentsMargins(28,16,28,28); self._cl.setSpacing(6)
+        self._cl.addStretch()
+        self._scroll.setWidget(self._c); v.addWidget(self._scroll, 1)
+
+    def refresh(self):
+        self.setUpdatesEnabled(False)
+        while self._cl.count() > 1:
+            item = self._cl.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        data = self._get_data()
+        parents = data.get("parents", [])
+        children = data.get("children", [])
+        parent_map = {p["id"]: p for p in parents}
+        parallel_map = {c["id"]: c for c in children if not c.get("seq_parent_id")}
+
+        # 今日タグが付いた全タスク（親・並列・直列）
+        tagged = []
+        for p in parents:
+            if p.get("today_tag"): tagged.append(("parent", p))
+        for c in children:
+            if c.get("today_tag"): tagged.append(("child", c))
+
+        # today_order でソート（未設定は末尾）
+        tagged.sort(key=lambda x: x[1].get("today_order", 9999))
+
+        self._count_lbl.setText(f"{len(tagged)} 件")
+
+        if not tagged:
+            e = mk_lbl("★ ボタンでタグ付けしたタスクがここに表示されます",
+                        size=11, color=C["sub"])
+            e.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            e.setStyleSheet(f"color:{C['sub']};border:1px dashed {C['border']};"
+                            f"border-radius:10px;padding:40px;")
+            self._cl.insertWidget(0, e)
+            self.setUpdatesEnabled(True)
+            return
+
+        for kind, task in tagged:
+            item = TodayItem(task, kind, parent_map, parallel_map,
+                             self._on_status_change, self._on_untag)
+            item.drag_start.connect(self._start_drag)
+            self._cl.insertWidget(self._cl.count()-1, item)
+
+        self.setUpdatesEnabled(True)
+
+    def _on_status_change(self, task, new_status):
+        task["status"] = new_status
+        if self._on_save: self._on_save()
+        self.refresh()
+
+    # ── drag & drop ──────────────────────────────────────
+    def _start_drag(self, item_widget):
+        drag = QDrag(item_widget)
+        md = QMimeData()
+        md.setText(f"today::{item_widget.task['id']}")
+        drag.setMimeData(md)
+        px = item_widget.grab()
+        scaled = px.scaled(px.width(), min(px.height(), 60),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+        drag.setPixmap(scaled)
+        drag.setHotSpot(QPoint(scaled.width()//2, 15))
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def _drag_enter(self, e):
+        if e.mimeData().hasText() and e.mimeData().text().startswith("today::"):
+            e.acceptProposedAction()
+
+    def _drag_move(self, e):
+        if e.mimeData().hasText() and e.mimeData().text().startswith("today::"):
+            e.acceptProposedAction()
+
+    def _drop(self, e):
+        txt = e.mimeData().text()
+        if not txt.startswith("today::"): return
+        dragged_id = txt.split("::")[1]
+        drop_y = e.position().y()
+
+        # レイアウト内の TodayItem を取得（stretchを除く）
+        items = []
+        for i in range(self._cl.count()):
+            w = self._cl.itemAt(i).widget()
+            if isinstance(w, TodayItem):
+                items.append(w)
+
+        # ドラッグ元を除外してドロップ位置を計算
+        items_excl = [w for w in items if w.task["id"] != dragged_id]
+        insert_idx = len(items_excl)
+        for i, w in enumerate(items_excl):
+            widget_y = w.mapTo(self._c, QPoint(0,0)).y()
+            if drop_y < widget_y + w.height() / 2:
+                insert_idx = i
+                break
+
+        # 新しい順序を構築
+        dragged_task = None
+        ordered = []
+        for w in items:
+            if w.task["id"] == dragged_id:
+                dragged_task = w.task
+            else:
+                ordered.append(w.task)
+        if dragged_task is None: return
+        ordered.insert(min(insert_idx, len(ordered)), dragged_task)
+
+        # today_order を振り直して保存
+        for i, task in enumerate(ordered):
+            task["today_order"] = i
+        if self._on_save: self._on_save()
+        self.refresh()
+        e.acceptProposedAction()
+
+# ══════════════════════════════════════════════════════════
+#  MAIN WINDOW
+# ══════════════════════════════════════════════════════════
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("TASKMASTER"); self.resize(1040,780); self.setMinimumSize(720,480)
+        self.data=load_data(); self._migrate()
+        self._filter_status="all"
+        self._hide_done_seq=False
+        self._collapse_seq_all=False
+        self._collapsed_parents={}
+        self._collapsed_parallels={}
+        self._zoom=1.0   # ズーム倍率
+        self.setStyleSheet(QSS); self._build_ui(); self._render()
+
+    def wheelEvent(self, e):
+        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            delta = e.angleDelta().y()
+            if delta > 0:
+                self._zoom = min(2.0, self._zoom + 0.1)
+            else:
+                self._zoom = max(0.5, self._zoom - 0.1)
+            self._apply_zoom()
+            e.accept()
+        else:
+            super().wheelEvent(e)
+
+    def _apply_zoom(self):
+        base = 13
+        scaled = max(8, int(base * self._zoom))
+        # フォントサイズをズームに合わせてQSSを再生成
+        zoom_qss = QSS + f"* {{ font-size: {scaled}px; }}"
+        self.setStyleSheet(zoom_qss)
+
+    def _migrate(self):
+        changed=False
+        for item in self.data.get("parents",[])+self.data.get("children",[]):
+            ns=migrate_status(item.get("status",""))
+            if ns!=item.get("status"): item["status"]=ns; changed=True
+        if changed: save_data(self.data)
+
+    def _parents(self):   return self.data.get("parents",[])
+    def _children(self):  return self.data.get("children",[])
+    def _parallel_map(self):
+        m={}
+        for c in self._children():
+            if not c.get("seq_parent_id"): m.setdefault(c["parent_id"],[]).append(c)
+        for k in m: m[k].sort(key=lambda x:x.get("order",0))
+        return m
+    def _save(self): save_data(self.data)
+
+    def _build_ui(self):
+        central=QWidget(); self.setCentralWidget(central)
+        root=QVBoxLayout(central); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
+
+        # header
+        hdr=QWidget(); hdr.setFixedHeight(54)
+        hdr.setStyleSheet(f"background:rgba(11,11,14,.97);border-bottom:1px solid {C['border']};")
+        hl=QHBoxLayout(hdr); hl.setContentsMargins(28,0,28,0); hl.setSpacing(4)
+        for txt,col in [("TASK",C["accent"]),("MASTER",C["sub"])]:
+            w=mk_lbl(txt,size=13,color=col,bold=(txt=="TASK"),mono=True)
+            w.setStyleSheet(f"color:{col};letter-spacing:3px;background:transparent;border:none;")
+            hl.addWidget(w)
+        hl.addStretch()
+        self.stat_lbl=mk_lbl("",size=10,color=C["sub"],mono=True); hl.addWidget(self.stat_lbl)
+        root.addWidget(hdr)
+
+        self._tabs=QTabWidget()
+
+        # ── TAB 1: タスク一覧 ──
+        tab1=QWidget(); tab1.setStyleSheet("background:transparent;")
+        t1l=QVBoxLayout(tab1); t1l.setContentsMargins(0,0,0,0); t1l.setSpacing(0)
+
+        tb=QWidget(); tb.setStyleSheet("background:transparent;")
+        tl_outer=QVBoxLayout(tb); tl_outer.setContentsMargins(28,8,28,8); tl_outer.setSpacing(6)
+
+        # 1行目: 検索・フィルター・追加
+        tl=QHBoxLayout(); tl.setSpacing(8)
+        self.search=QLineEdit(); self.search.setPlaceholderText("タスクを検索…")
+        self.search.setFixedHeight(34); self.search.setMaximumWidth(220)
+        self.search.textChanged.connect(self._render); tl.addWidget(self.search)
+
+        self._filter_btns={}
+        for val,label in [("all","すべて"),("未着手","未着手"),("実行中","実行中"),("完了","完了")]:
+            b=mk_btn(label,h=32); b.clicked.connect(lambda _,v=val:self._set_filter(v))
+            tl.addWidget(b); self._filter_btns[val]=b
+        self._update_filter_ui()
+
+        self._hide_seq_btn=mk_btn("完了直列を隠す",h=32)
+        self._hide_seq_btn.clicked.connect(self._toggle_hide_seq)
+        tl.addWidget(self._hide_seq_btn)
+
+        add_btn=mk_btn("＋ 新規親タスク",h=34,bold=True,fs=12)
+        add_btn.setStyleSheet(f"QPushButton{{background:{C['accent']};color:#0b0b0e;border:none;border-radius:5px;padding:0 16px;font-size:12px;font-weight:bold;font-family:'Courier New';}} QPushButton:hover{{background:#f0ff60;}}")
+        add_btn.clicked.connect(self._add_parent); tl.addWidget(add_btn)
+        tl.addStretch()
+        tl_outer.addLayout(tl)
+
+        # 2行目: まとめて折りたたみボタン
+        tl2=QHBoxLayout(); tl2.setSpacing(6)
+        tl2.addWidget(mk_lbl("まとめて折りたたむ:", size=9, color=C["sub"], mono=True))
+
+        self._collapse_parents_btn=mk_btn("親タスク",h=26,fs=10)
+        self._collapse_parents_btn.clicked.connect(self._toggle_collapse_all_parents)
+        tl2.addWidget(self._collapse_parents_btn)
+
+        self._collapse_parallels_btn=mk_btn("並列タスク",h=26,fs=10)
+        self._collapse_parallels_btn.clicked.connect(self._toggle_collapse_all_parallels)
+        tl2.addWidget(self._collapse_parallels_btn)
+
+        self._collapse_seq_btn=mk_btn("直列タスク",h=26,fs=10)
+        self._collapse_seq_btn.clicked.connect(self._toggle_collapse_all_seq)
+        tl2.addWidget(self._collapse_seq_btn)
+
+        tl2.addStretch()
+        tl_outer.addLayout(tl2)
+        t1l.addWidget(tb); t1l.addWidget(mk_sep())
+
+        self._scroll=QScrollArea(); self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        self._scroll.setAcceptDrops(True)
+        self._scroll.dragEnterEvent=self._drag_enter
+        self._scroll.dragMoveEvent =self._drag_move
+        self._scroll.dropEvent     =self._drop
+
+        self._list_w=QWidget(); self._list_w.setStyleSheet("background:transparent;")
+        self._ll=QVBoxLayout(self._list_w); self._ll.setContentsMargins(28,20,28,28); self._ll.setSpacing(14)
+        self._ll.addStretch(); self._scroll.setWidget(self._list_w)
+        t1l.addWidget(self._scroll,1)
+        self._tabs.addTab(tab1,"📋  タスク一覧")
+
+        # ── TAB 2: 日付別 ──
+        self._date_tab=DateTab(lambda:self.data)
+        self._tabs.addTab(self._date_tab,"📅  日付別")
+
+        self._today_tab=TodayTab(lambda:self.data, self._untag_today, on_save=self._save)
+        self._tabs.addTab(self._today_tab,"★  今日やる")
+
+        def _on_tab_change(i):
+            if i==1: self._date_tab.refresh()
+            elif i==2: self._today_tab.refresh()
+        self._tabs.currentChanged.connect(_on_tab_change)
+        root.addWidget(self._tabs,1)
+
+        # ── keyboard shortcuts ──
+        QShortcut(QKeySequence("Ctrl+N"),self).activated.connect(self._add_parent)
+        QShortcut(QKeySequence("Ctrl+F"),self).activated.connect(lambda:self.search.setFocus())
+        QShortcut(QKeySequence("Ctrl+0"),self).activated.connect(self._reset_zoom)
+        QShortcut(QKeySequence("Escape"),self).activated.connect(lambda:self.search.clear())
+
+    def _reset_zoom(self):
+        self._zoom=1.0; self._apply_zoom()
+
+    # ── filter ────────────────────────────────────────────
+    def _untag_today(self, task_id):
+        for item in self._parents() + self._children():
+            if item["id"] == task_id:
+                item["today_tag"] = False
+                item.pop("today_order", None)
+                break
+        self._save(); self._today_tab.refresh(); self._render()
+
+    def _on_data_changed(self):
+        self._save(); self._render()
+        if self._tabs.currentIndex() == 2:
+            self._today_tab.refresh()
+
+    def _set_filter(self,s):
+        self._filter_status=s; self._update_filter_ui(); self._render()
+
+    def _update_filter_ui(self):
+        for val,b in self._filter_btns.items():
+            active=(val==self._filter_status)
+            if active:
+                b.setStyleSheet(f"QPushButton{{background:rgba(232,255,71,.08);color:{C['accent']};border:1px solid {C['accent']};border-radius:5px;padding:0 12px;font-size:11px;font-family:'Courier New';}} QPushButton:hover{{background:rgba(232,255,71,.15);}}")
+            else:
+                b.setStyleSheet(f"QPushButton{{background:transparent;color:{C['sub']};border:1px solid {C['border']};border-radius:5px;padding:0 12px;font-size:11px;font-family:'Courier New';}} QPushButton:hover{{border-color:{C['accent']};color:{C['accent']};background:rgba(232,255,71,.04);}}")
+
+    def _toggle_collapse_all_parents(self):
+        parents=self._parents()
+        all_collapsed=all(self._collapsed_parents.get(p["id"],False) for p in parents)
+        new_val=not all_collapsed
+        for p in parents: self._collapsed_parents[p["id"]]=new_val
+        col=C["accent"] if new_val else C["sub"]
+        self._collapse_parents_btn.setStyleSheet(
+            self._collapse_parents_btn.styleSheet()+f"QPushButton{{color:{col};border-color:{col};}}")
+        self._render()
+
+    def _toggle_collapse_all_parallels(self):
+        parallels=[c for c in self._children() if not c.get("seq_parent_id")]
+        all_collapsed=all(self._collapsed_parallels.get(c["id"],False) for c in parallels)
+        new_val=not all_collapsed
+        for c in parallels: self._collapsed_parallels[c["id"]]=new_val
+        col=C["accent"] if new_val else C["sub"]
+        self._collapse_parallels_btn.setStyleSheet(
+            self._collapse_parallels_btn.styleSheet()+f"QPushButton{{color:{col};border-color:{col};}}")
+        self._render()
+
+    def _toggle_collapse_all_seq(self):
+        self._collapse_seq_all=not self._collapse_seq_all
+        col=C["accent"] if self._collapse_seq_all else C["sub"]
+        self._collapse_seq_btn.setStyleSheet(
+            self._collapse_seq_btn.styleSheet()+f"QPushButton{{color:{col};border-color:{col};}}")
+        self._render()
+
+    def _toggle_hide_seq(self):
+        self._hide_done_seq=not self._hide_done_seq
+        self._hide_seq_btn.setText("完了直列を表示" if self._hide_done_seq else "完了直列を隠す")
+        col=C["green"] if self._hide_done_seq else C["sub"]
+        self._hide_seq_btn.setStyleSheet(
+            f"QPushButton{{color:{col};border:1px solid {col};border-radius:5px;padding:0 10px;font-size:11px;font-family:'Courier New';background:transparent;}}"
+            f"QPushButton:hover{{border-color:{C['accent']};color:{C['accent']};background:rgba(232,255,71,.07);}}"
+        )
+        self._render()
+
+    # ── render ────────────────────────────────────────────
+    def _render(self):
+        # スクロール位置を保存
+        scroll_bar = self._scroll.verticalScrollBar()
+        saved_scroll = scroll_bar.value()
+
+        # ウィンドウ全体の再描画を完全停止（フラッシュ防止の要）
+        central = self.centralWidget()
+        central.setUpdatesEnabled(False)
+
+        q=self.search.text().strip().lower(); sf=self._filter_status
+
+        # 既存ウィジェットを回収（非表示→レイアウト除去）
+        old_widgets=[]
+        while self._ll.count()>1:
+            item=self._ll.takeAt(0)
+            w=item.widget()
+            if w:
+                w.hide()
+                old_widgets.append(w)
+
+        pm=self._parallel_map(); all_c=self._children()
+
+        def task_matches_filter(t):
+            if sf=="all": return True
+            return t.get("status","未着手")==sf
+
+        def parent_has_match(pt):
+            if task_matches_filter(pt): return True
+            for pc in pm.get(pt["id"],[]):
+                if task_matches_filter(pc): return True
+                seq=[c for c in all_c if c.get("seq_parent_id")==pc["id"]]
+                if any(task_matches_filter(s) for s in seq): return True
+            return False
+
+        def parent_matches_search(pt):
+            if not q: return True
+            if q in pt["title"].lower(): return True
+            if q in pt.get("note","").lower(): return True
+            for c in pm.get(pt["id"],[]):
+                if q in c["title"].lower(): return True
+                if q in c.get("note","").lower(): return True
+                # 直列タスクも検索対象
+                for s in all_c:
+                    if s.get("seq_parent_id")==c["id"]:
+                        if q in s["title"].lower(): return True
+                        if q in s.get("note","").lower(): return True
+            return False
+
+        visible=[p for p in self._parents()
+                 if parent_has_match(p) and parent_matches_search(p)]
+
+        if not visible:
+            e=mk_lbl("タスクがありません",size=11,color=C["sub"])
+            e.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            e.setStyleSheet(f"color:{C['sub']};border:1px dashed {C['border']};border-radius:10px;padding:40px;")
+            self._ll.insertWidget(0,e)
+        else:
+            for pt in visible:
+                pc=pm.get(pt["id"],[])
+                card=ParentCard(pt,pc,all_c,
+                                filter_status=sf,
+                                hide_done_seq=self._hide_done_seq,
+                                collapsed=self._collapsed_parents.get(pt["id"], False),
+                                collapsed_parallels=self._collapsed_parallels,
+                                on_collapse=lambda pid,v: self._collapsed_parents.update({pid:v}),
+                                on_collapse_parallel=lambda cid,v: self._collapsed_parallels.update({cid:v}),
+                                collapse_seq_all=self._collapse_seq_all)
+                card.changed.connect(self._on_data_changed)
+                card.add_parallel.connect(self._add_parallel)
+                card.add_seq.connect(self._add_seq)
+                card.del_parallel.connect(self._del_parallel)
+                card.del_seq.connect(self._del_seq_only)
+                card.del_self.connect(self._del_parent)
+                card.edit_child.connect(self._edit_child)
+                card.edit_self.connect(self._edit_parent)
+                card.drag_start.connect(self._start_parent_drag)
+                card.seq_reorder_req.connect(self._reorder_seq)
+                card.par_reorder_req.connect(self._reorder_parallel)
+                self._ll.insertWidget(self._ll.count()-1,card)
+
+        pts=self._parents()
+        todo=sum(1 for p in pts if p.get("status")=="未着手")
+        doing=sum(1 for p in pts if p.get("status")=="実行中")
+        done=sum(1 for p in pts if p.get("status")=="完了")
+        self.stat_lbl.setText(f"未着手 {todo}  実行中 {doing}  完了 {done}  / 計 {len(pts)} 件")
+
+        # 古いウィジェットを破棄
+        for w in old_widgets:
+            w.deleteLater()
+
+        # レイアウトを確定させてからスクロール位置を復元し、最後に描画再開
+        QApplication.processEvents()
+        scroll_bar.setValue(saved_scroll)
+        central.setUpdatesEnabled(True)
+
+    # ── CRUD ──────────────────────────────────────────────
+    def _add_parent(self):
+        dlg=TaskDialog(self)
+        if dlg.exec()==QDialog.DialogCode.Accepted:
+            d=dlg.result_data
+            new_task={"id":nid(),"title":d["title"],"note":d["note"],
+                      "status":d["status"],"due":d["due"],"order":0}
+            self.data.setdefault("parents",[]).insert(0, new_task)
+            for i,p in enumerate(self._parents()): p["order"]=i
+            self._save(); self._render()
+
+    def _edit_parent(self,pid):
+        pt=next((p for p in self._parents() if p["id"]==pid),None)
+        if not pt: return
+        dlg=TaskDialog(self,task=pt)
+        if dlg.exec()==QDialog.DialogCode.Accepted:
+            pt.update(dlg.result_data); self._save(); self._render()
+
+    def _add_parallel(self,parent_id):
+        dlg=TaskDialog(self)
+        if dlg.exec()==QDialog.DialogCode.Accepted:
+            d=dlg.result_data; pm=self._parallel_map()
+            self.data.setdefault("children",[]).append({
+                "id":nid(),"parent_id":parent_id,"seq_parent_id":None,
+                "title":d["title"],"note":d["note"],
+                "status":d["status"],"due":d["due"],
+                "order":len(pm.get(parent_id,[])),"seq_order":0,})
+            self._save(); self._render()
+
+    def _add_seq(self,parallel_id):
+        pc=next((c for c in self._children() if c["id"]==parallel_id),None)
+        if not pc: return
+        dlg=TaskDialog(self)
+        if dlg.exec()==QDialog.DialogCode.Accepted:
+            d=dlg.result_data
+            seq=[c for c in self._children() if c.get("seq_parent_id")==parallel_id]
+            self.data["children"].append({
+                "id":nid(),"parent_id":pc["parent_id"],"seq_parent_id":parallel_id,
+                "title":d["title"],"note":d["note"],
+                "status":d["status"],"due":d["due"],"order":0,"seq_order":len(seq),})
+            self._save(); self._render()
+
+    def _edit_child(self,child_id):
+        c=next((x for x in self._children() if x["id"]==child_id),None)
+        if not c: return
+        dlg=TaskDialog(self,task=c)
+        if dlg.exec()==QDialog.DialogCode.Accepted:
+            c.update(dlg.result_data); self._save(); self._render()
+
+    def _del_parallel(self, child_id):
+        """並列タスク削除 → 配下の直列タスクも連鎖削除"""
+        task=next((c for c in self._children() if c["id"]==child_id),None)
+        name=task["title"] if task else "このタスク"
+        if QMessageBox.question(self,"削除確認",
+            f"「{name}」と配下の直列タスクを削除しますか？",
+            QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No
+        )!=QMessageBox.StandardButton.Yes: return
+        self.data["children"]=[c for c in self._children()
+            if c["id"]!=child_id and c.get("seq_parent_id")!=child_id]
+        self._save(); self._render()
+
+    def _del_seq_only(self, child_id):
+        """直列タスク単体削除（連鎖しない）"""
+        task=next((c for c in self._children() if c["id"]==child_id),None)
+        name=task["title"] if task else "このタスク"
+        if QMessageBox.question(self,"削除確認",
+            f"「{name}」を削除しますか？",
+            QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No
+        )!=QMessageBox.StandardButton.Yes: return
+        self.data["children"]=[c for c in self._children() if c["id"]!=child_id]
+        # 全並列タスクのseq_orderを再番号付け
+        seq_children=sorted([c for c in self._children() if c.get("seq_parent_id")],
+                             key=lambda x:(x["seq_parent_id"],x.get("seq_order",0)))
+        for par_id, grp in groupby(seq_children, key=lambda x:x["seq_parent_id"]):
+            for i,c in enumerate(grp): c["seq_order"]=i
+        self._save(); self._render()
+
+    def _del_parent(self,parent_id):
+        pt=next((p for p in self._parents() if p["id"]==parent_id),None)
+        name=pt["title"] if pt else "このタスク"
+        n_children=sum(1 for c in self._children() if c["parent_id"]==parent_id)
+        msg=f"「{name}」を削除しますか？"
+        if n_children: msg+=f"\n（配下の子タスク {n_children} 件も削除されます）"
+        if QMessageBox.question(self,"削除確認",msg,
+            QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No
+        )!=QMessageBox.StandardButton.Yes: return
+        child_ids={c["id"] for c in self._children() if c["parent_id"]==parent_id}
+        self.data["parents"]=[p for p in self._parents() if p["id"]!=parent_id]
+        self.data["children"]=[c for c in self._children()
+            if c["parent_id"]!=parent_id and c.get("seq_parent_id") not in child_ids]
+        self._save(); self._render()
+
+    def _reorder_parallel(self, parent_id:str, child_id:str, insert_before:int):
+        """並列タスクを指定インデックスに挿入"""
+        pm=self._parallel_map()
+        parallels=pm.get(parent_id,[])
+        idx_from=next((i for i,c in enumerate(parallels) if c["id"]==child_id),None)
+        if idx_from is None: return
+        item=parallels.pop(idx_from)
+        target=min(insert_before, len(parallels))
+        parallels.insert(target, item)
+        for i,c in enumerate(parallels): c["order"]=i
+        self._save(); self._render()
+
+    def _reorder_seq(self, parallel_id:str, child_id:str, insert_before:int):
+        """直列タスクを指定インデックスに挿入"""
+        seq=sorted([c for c in self._children() if c.get("seq_parent_id")==parallel_id],
+                   key=lambda x:x.get("seq_order",0))
+        idx_from=next((i for i,c in enumerate(seq) if c["id"]==child_id),None)
+        if idx_from is None: return
+        item=seq.pop(idx_from)
+        # insert_before は dragged を除いたリスト上のインデックス
+        target=min(insert_before, len(seq))
+        seq.insert(target, item)
+        for i,c in enumerate(seq): c["seq_order"]=i
+        self._save(); self._render()
+
+    # ── drag & drop ───────────────────────────────────────
+    def _start_parent_drag(self,card):
+        drag=QDrag(card); md=QMimeData()
+        md.setText(f"parent::{card.pt['id']}")
+        drag.setMimeData(md)
+        px=card.grab()
+        scaled=px.scaled(px.width(),min(px.height(),100),
+            Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+        drag.setPixmap(scaled); drag.setHotSpot(QPoint(scaled.width()//2,20))
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def _drag_enter(self,e):
+        if e.mimeData().hasText(): e.acceptProposedAction()
+
+    def _drag_move(self,e):
+        if e.mimeData().hasText(): e.acceptProposedAction()
+
+    def _drop(self,e):
+        txt=e.mimeData().text()
+        if not txt.startswith("parent::"):
+            e.acceptProposedAction(); return
+        pid=txt.split("::")[1]; drop_y=e.position().y(); parents=self._parents()
+        cards=[self._ll.itemAt(i).widget() for i in range(self._ll.count()-1) if self._ll.itemAt(i).widget()]
+        new_order=len(cards)
+        for i,card in enumerate(cards):
+            if not isinstance(card,ParentCard): continue
+            if drop_y<card.y()+card.height()/2: new_order=i; break
+        idx=next((i for i,p in enumerate(parents) if p["id"]==pid),None)
+        if idx is None: return
+        item=parents.pop(idx); parents.insert(min(new_order,len(parents)),item)
+        for i,p in enumerate(parents): p["order"]=i
+        self._save(); self._render()
+        e.acceptProposedAction()
+
+# ══════════════════════════════════════════════════════════
+#  ENTRY
+# ══════════════════════════════════════════════════════════
+if __name__=="__main__":
+    app=QApplication(sys.argv); app.setApplicationName("TASKMASTER")
+    win=MainWindow(); win.show(); sys.exit(app.exec())
